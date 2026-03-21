@@ -6,6 +6,7 @@ BRAIN_DIR = BASE_DIR / "brain"
 PACKAGES_DIR = BASE_DIR / "packages"
 LOGS_DIR = BASE_DIR / "logs"
 REPORTS_DIR = BASE_DIR / "reports"
+DEFAULT_PACKAGE_PROFILE = PACKAGES_DIR / "ads_lab.json"
 
 PYTHON_EXECUTABLE = Path(
     r"C:\Users\Administrador\AppData\Local\Programs\Python\Python314\python.exe"
