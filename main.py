@@ -32,15 +32,22 @@ def bootstrap():
         sys.exit(1)
     logger.info("Privilegios de Administrador confirmados.", status="bootstrap")
 
-    if not winget.is_installed():
-        logger.error(
-            "WinGet nao encontrado no sistema. Abortando execucao.",
-            status="bootstrap_error",
-        )
-        sys.exit(1)
+    winget_state = winget.classify_winget_state()
+    diagnostics = winget_state["diagnostics"]
+    logger.info(
+        "Windows detectado: "
+        f"{diagnostics['product_name']} | versao {diagnostics['display_version']} | build {diagnostics['build']}.",
+        status="bootstrap",
+    )
 
-    version = winget.get_version()
-    logger.info(f"WinGet detectado: Versao {version}", status="bootstrap")
+    if winget_state["state"] == "available":
+        logger.info(winget_state["reason"], status="bootstrap")
+    else:
+        logger.warning(
+            f"Modo degradado sem WinGet: {winget_state['reason']}",
+            status="bootstrap_degraded",
+        )
+
     logger.info(
         "Ambiente validado com sucesso. Pronto para carregar pacotes.",
         status="bootstrap",
@@ -89,6 +96,14 @@ def process_package(package, logger, winget):
         )
         return "pending"
 
+    if not winget.is_installed():
+        logger.warning(
+            f"Pacote '{package_name}' nao pode ser automatizado nesta maquina porque o WinGet nao esta disponivel.",
+            status="winget_unavailable",
+            package_name=package_name,
+        )
+        return "blocked"
+
     logger.info(
         f"Validando pacote '{package_name}' ({winget_id})...",
         status="checking",
@@ -125,9 +140,23 @@ def execute_package_plan(profile, logger, winget):
             "O catalogo nao possui pacotes cadastrados. Nenhuma acao sera executada.",
             status="empty_catalog",
         )
-        return {"installed": 0, "already_installed": 0, "pending": 0, "manual": 0, "failed": 0}
+        return {
+            "installed": 0,
+            "already_installed": 0,
+            "pending": 0,
+            "manual": 0,
+            "failed": 0,
+            "blocked": 0,
+        }
 
-    results = {"installed": 0, "already_installed": 0, "pending": 0, "manual": 0, "failed": 0}
+    results = {
+        "installed": 0,
+        "already_installed": 0,
+        "pending": 0,
+        "manual": 0,
+        "failed": 0,
+        "blocked": 0,
+    }
 
     for package in packages:
         result = process_package(package, logger, winget)
@@ -140,7 +169,8 @@ def execute_package_plan(profile, logger, winget):
         f"{results['already_installed']} ja presente(s), "
         f"{results['pending']} pendente(s), "
         f"{results['manual']} manual(is), "
-        f"{results['failed']} falha(s).",
+        f"{results['failed']} falha(s), "
+        f"{results['blocked']} bloqueado(s).",
         status="execution_summary",
     )
     return results
@@ -161,6 +191,7 @@ def write_execution_report(profile, results, logger):
         ("pending", results["pending"]),
         ("manual", results["manual"]),
         ("failed", results["failed"]),
+        ("blocked", results["blocked"]),
     ]
 
     with report_path.open("w", encoding="utf-8", newline="") as report_file:
