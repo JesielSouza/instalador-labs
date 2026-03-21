@@ -4,6 +4,7 @@ reports/
 .env
 .venv/
 venv/
+.tmp-bootstrap/
 __pycache__/
 *.pyc
 *.pyo

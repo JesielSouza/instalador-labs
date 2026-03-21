@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 
@@ -7,9 +8,13 @@ PACKAGES_DIR = BASE_DIR / "packages"
 LOGS_DIR = BASE_DIR / "logs"
 REPORTS_DIR = BASE_DIR / "reports"
 DEFAULT_PACKAGE_PROFILE = PACKAGES_DIR / "ads_lab.json"
+VENV_DIR = BASE_DIR / ".venv"
+VENV_PYTHON = VENV_DIR / "Scripts" / "python.exe"
 
-PYTHON_EXECUTABLE = Path(
-    r"C:\Users\Administrador\AppData\Local\Programs\Python\Python314\python.exe"
+KNOWN_PYTHON_CANDIDATES = (
+    VENV_PYTHON,
+    Path(sys.executable) if sys.executable else None,
+    Path(r"C:\Users\Administrador\AppData\Local\Programs\Python\Python314\python.exe"),
 )
 
 WINGET_CANDIDATES = (
@@ -19,8 +24,11 @@ WINGET_CANDIDATES = (
 
 
 def resolve_python_executable() -> str:
-    """Retorna o Python padrao do projeto em caminho absoluto."""
-    return str(PYTHON_EXECUTABLE)
+    """Retorna o Python preferencial do projeto, priorizando a venv local."""
+    for candidate in KNOWN_PYTHON_CANDIDATES:
+        if candidate and candidate.exists():
+            return str(candidate)
+    return sys.executable or "python"
 
 
 def resolve_winget_executable() -> str | None:
