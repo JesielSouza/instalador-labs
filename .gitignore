@@ -1,4 +1,3 @@
-brain/
 logs/
 reports/
 .env
@@ -6,6 +5,9 @@ reports/
 venv/
 .tmp-bootstrap/
 .downloads/
+build/
+dist/
+*.spec
 __pycache__/
 *.pyc
 *.pyo

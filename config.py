@@ -2,7 +2,14 @@ import sys
 from pathlib import Path
 
 
-BASE_DIR = Path(__file__).resolve().parent
+def _resolve_base_dir() -> Path:
+    """Retorna a base do projeto ou do executavel empacotado."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+BASE_DIR = _resolve_base_dir()
 BRAIN_DIR = BASE_DIR / "brain"
 PACKAGES_DIR = BASE_DIR / "packages"
 LOGS_DIR = BASE_DIR / "logs"
