@@ -2,7 +2,11 @@ name: QA Review com Gemini
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   gemini-review:
@@ -14,32 +18,97 @@ jobs:
           fetch-depth: 0
 
       - name: Obter diff do PR
-        id: diff
+        shell: bash
         run: |
-          git diff origin/${{ github.base_ref }}...HEAD > diff.txt
-          echo "diff=$(cat diff.txt | head -c 3000 | base64 -w 0)" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          git diff --unified=3 "origin/${{ github.base_ref }}"...HEAD > diff.txt
+
+      - name: Preparar payload para Gemini
+        id: payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          diff = Path('diff.txt').read_text(encoding='utf-8', errors='replace')
+          diff = diff[:12000]
+
+          prompt = (
+              'Voce e um analista de QA especialista em Python e automacao Windows. '
+              'Analise o diff abaixo e aponte: erros de logica, ausencia de tratamento de erros, '
+              'cenarios de falha nao cobertos e sugestoes de melhoria. '
+              'Classifique o resultado como APROVADO ou BLOQUEADO e explique objetivamente.\n\n'
+              f'Diff:\n{diff}'
+          )
+
+          payload = {
+              'contents': [
+                  {
+                      'parts': [
+                          {'text': prompt}
+                      ]
+                  }
+              ]
+          }
+
+          Path('gemini_payload.json').write_text(
+              json.dumps(payload, ensure_ascii=False),
+              encoding='utf-8',
+          )
+          PY
 
       - name: Enviar para Gemini
         id: gemini
+        shell: bash
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          DIFF=$(cat diff.txt | head -c 3000)
-          RESPONSE=$(curl -s -X POST \
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${{ secrets.GEMINI_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"contents\":[{\"parts\":[{\"text\":\"Você é um analista de QA especialista em Python e automação Windows. Analise o diff abaixo e aponte: erros de lógica, ausência de tratamento de erros, cenários de falha não cobertos, e sugestões de melhoria. Seja direto e objetivo.\n\nDiff:\n$(echo "$DIFF" | sed 's/"/\\"/g' | tr '\n' ' ')\"}]}]}")
-          echo "response<<EOF" >> $GITHUB_OUTPUT
-          echo "$RESPONSE" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          set -euo pipefail
 
-      - name: Postar comentário no PR
+          if [ -z "${GEMINI_API_KEY:-}" ]; then
+            echo 'Secret GEMINI_API_KEY ausente.' >&2
+            exit 1
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}" \
+            -H "Content-Type: application/json" \
+            --data @gemini_payload.json \
+            > gemini_response.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          response = json.loads(Path('gemini_response.json').read_text(encoding='utf-8'))
+          text = response.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '')
+          if not text.strip():
+              raise SystemExit('Gemini nao retornou analise utilizavel.')
+
+          import os
+          output_path = Path(os.environ['GITHUB_OUTPUT'])
+          with output_path.open('a', encoding='utf-8') as fh:
+              fh.write('review<<EOF\n')
+              fh.write(text)
+              fh.write('\nEOF\n')
+          PY
+
+      - name: Postar comentario no PR
         uses: actions/github-script@v7
+        env:
+          GEMINI_REVIEW: ${{ steps.gemini.outputs.review }}
         with:
           script: |
-            const response = JSON.parse(`${{ steps.gemini.outputs.response }}`);
-            const text = response.candidates?.[0]?.content?.parts?.[0]?.text || 'Gemini não retornou análise.';
-            github.rest.issues.createComment({
+            const text = process.env.GEMINI_REVIEW?.trim() || 'Gemini nao retornou analise.';
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## 🤖 QA Review — Gemini\n\n${text}`
+              body: `## QA Review - Gemini
+
+${text}`
             });
