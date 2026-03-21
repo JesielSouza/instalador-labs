@@ -1,5 +1,41 @@
 {
   "profile": "ads_lab",
-  "description": "Catalogo inicial do laboratorio ADS.",
-  "packages": []
+  "description": "Catalogo operacional inicial do laboratorio ADS.",
+  "packages": [
+    {
+      "software": "Visual Studio Code",
+      "install_type": "winget",
+      "winget_id": "Microsoft.VisualStudioCode",
+      "notes": "Instalacao padrao."
+    },
+    {
+      "software": "Python 3.12",
+      "install_type": "winget",
+      "winget_id": "Python.Python.3.12",
+      "notes": "Requer extensao no VS Code."
+    },
+    {
+      "software": "Figma",
+      "install_type": "winget_pending",
+      "winget_id": "Figma.Figma",
+      "notes": "Validar comportamento do instalador."
+    },
+    {
+      "software": "MySQL Workbench",
+      "install_type": "winget_pending",
+      "winget_id": "Oracle.MySQL.Workbench",
+      "notes": "Requer validacao de dependencias."
+    },
+    {
+      "software": "XAMPP",
+      "install_type": "winget_pending",
+      "winget_id": "ApacheFriends.Xampp.8.2",
+      "notes": "Validar path de instalacao."
+    },
+    {
+      "software": "Astah Community",
+      "install_type": "manual",
+      "notes": "Licenca estudantil; requer intervencao manual."
+    }
+  ]
 }
