@@ -4,6 +4,7 @@ import sys
 from datetime import datetime
 
 from config import REPORTS_DIR
+from utils.fallback_installer import DirectInstallerManager
 from utils.logger import LabLogger
 from utils.package_loader import PackageProfileValidationError, load_ads_lab_profile
 from utils.winget import WinGetManager
@@ -21,6 +22,7 @@ def bootstrap():
     """Inicializa o sistema e valida requisitos basicos do ambiente."""
     logger = LabLogger()
     winget = WinGetManager()
+    direct_installer = DirectInstallerManager()
 
     logger.info("Iniciando GSD - Instalador de Laboratorios...", status="bootstrap")
 
@@ -52,7 +54,7 @@ def bootstrap():
         "Ambiente validado com sucesso. Pronto para carregar pacotes.",
         status="bootstrap",
     )
-    return logger, winget
+    return logger, winget, direct_installer
 
 
 def load_package_catalog(logger):
@@ -74,7 +76,7 @@ def load_package_catalog(logger):
     return profile
 
 
-def process_package(package, logger, winget):
+def process_package(package, logger, winget, direct_installer):
     """Processa um pacote do catalogo de acordo com seu tipo de instalacao."""
     package_name = package["software"]
     install_type = package["install_type"]
@@ -97,6 +99,22 @@ def process_package(package, logger, winget):
         return "pending"
 
     if not winget.is_installed():
+        if direct_installer.is_package_present(package):
+            logger.success(package_name, status="already_installed")
+            return "already_installed"
+
+        if package.get("fallback_installer"):
+            if direct_installer.install_package(package, logger):
+                logger.success(package_name, status="installed")
+                return "installed"
+
+            logger.error(
+                f"Falha no fallback de instalacao de '{package_name}'.",
+                status="fallback_failed",
+                package_name=package_name,
+            )
+            return "failed"
+
         logger.warning(
             f"Pacote '{package_name}' nao pode ser automatizado nesta maquina porque o WinGet nao esta disponivel.",
             status="winget_unavailable",
@@ -132,7 +150,7 @@ def process_package(package, logger, winget):
     return "failed"
 
 
-def execute_package_plan(profile, logger, winget):
+def execute_package_plan(profile, logger, winget, direct_installer):
     """Executa o plano de processamento dos pacotes do perfil."""
     packages = profile.get("packages", [])
     if not packages:
@@ -159,7 +177,7 @@ def execute_package_plan(profile, logger, winget):
     }
 
     for package in packages:
-        result = process_package(package, logger, winget)
+        result = process_package(package, logger, winget, direct_installer)
         if result in results:
             results[result] += 1
 
@@ -207,7 +225,7 @@ def write_execution_report(profile, results, logger):
 
 
 if __name__ == "__main__":
-    logger, winget = bootstrap()
+    logger, winget, direct_installer = bootstrap()
     package_profile = load_package_catalog(logger)
-    execution_results = execute_package_plan(package_profile, logger, winget)
+    execution_results = execute_package_plan(package_profile, logger, winget, direct_installer)
     report_path = write_execution_report(package_profile, execution_results, logger)

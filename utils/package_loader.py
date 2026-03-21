@@ -84,6 +84,45 @@ def validate_package_profile(profile: dict) -> dict:
                 f"Pacote invalido na posicao {index}: 'winget_id' deve ser string quando informado."
             )
 
+        detect_names = package.get("detect_names")
+        if detect_names is not None:
+            if not isinstance(detect_names, list) or not all(
+                isinstance(item, str) and item.strip() for item in detect_names
+            ):
+                raise PackageProfileValidationError(
+                    f"Pacote invalido na posicao {index}: 'detect_names' deve ser uma lista de strings nao vazias."
+                )
+
+        fallback_installer = package.get("fallback_installer")
+        if fallback_installer is not None:
+            if not isinstance(fallback_installer, dict):
+                raise PackageProfileValidationError(
+                    f"Pacote invalido na posicao {index}: 'fallback_installer' deve ser um objeto."
+                )
+
+            for field in ("download_url", "install_args"):
+                if field not in fallback_installer:
+                    raise PackageProfileValidationError(
+                        f"Pacote invalido na posicao {index}: campo obrigatorio ausente em 'fallback_installer': '{field}'."
+                    )
+
+            if not isinstance(fallback_installer["download_url"], str) or not fallback_installer["download_url"].strip():
+                raise PackageProfileValidationError(
+                    f"Pacote invalido na posicao {index}: 'fallback_installer.download_url' deve ser string nao vazia."
+                )
+
+            install_args = fallback_installer["install_args"]
+            if not isinstance(install_args, list) or not all(isinstance(arg, str) for arg in install_args):
+                raise PackageProfileValidationError(
+                    f"Pacote invalido na posicao {index}: 'fallback_installer.install_args' deve ser uma lista de strings."
+                )
+
+            file_name = fallback_installer.get("file_name")
+            if file_name is not None and (not isinstance(file_name, str) or not file_name.strip()):
+                raise PackageProfileValidationError(
+                    f"Pacote invalido na posicao {index}: 'fallback_installer.file_name' deve ser string nao vazia quando informado."
+                )
+
     return profile
 
 

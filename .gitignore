@@ -5,6 +5,7 @@ reports/
 .venv/
 venv/
 .tmp-bootstrap/
+.downloads/
 __pycache__/
 *.pyc
 *.pyo

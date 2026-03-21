@@ -6,12 +6,39 @@
       "software": "Visual Studio Code",
       "install_type": "winget",
       "winget_id": "Microsoft.VisualStudioCode",
+      "detect_names": [
+        "Microsoft Visual Studio Code"
+      ],
+      "fallback_installer": {
+        "download_url": "https://update.code.visualstudio.com/latest/win32-x64/stable",
+        "file_name": "vscode-x64-system-installer.exe",
+        "install_args": [
+          "/SP-",
+          "/VERYSILENT",
+          "/SUPPRESSMSGBOXES",
+          "/NORESTART"
+        ]
+      },
       "notes": "Instalacao padrao."
     },
     {
       "software": "Python 3.12",
       "install_type": "winget",
       "winget_id": "Python.Python.3.12",
+      "detect_names": [
+        "Python 3.12"
+      ],
+      "fallback_installer": {
+        "download_url": "https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe",
+        "file_name": "python-3.12.9-amd64.exe",
+        "install_args": [
+          "/quiet",
+          "InstallAllUsers=1",
+          "PrependPath=1",
+          "Include_test=0",
+          "Include_pip=1"
+        ]
+      },
       "notes": "Requer extensao no VS Code."
     },
     {
