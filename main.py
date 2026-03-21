@@ -1,6 +1,9 @@
 import ctypes
+import csv
 import sys
+from datetime import datetime
 
+from config import REPORTS_DIR
 from utils.logger import LabLogger
 from utils.package_loader import PackageProfileValidationError, load_ads_lab_profile
 from utils.winget import WinGetManager
@@ -143,8 +146,37 @@ def execute_package_plan(profile, logger, winget):
     return results
 
 
+def write_execution_report(profile, results, logger):
+    """Gera um relatorio CSV simples a partir do resumo da execucao."""
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_path = REPORTS_DIR / f"execution_report_{timestamp}.csv"
+
+    rows = [
+        ("profile", profile.get("profile", "desconhecido")),
+        ("description", profile.get("description", "")),
+        ("total_packages", len(profile.get("packages", []))),
+        ("installed", results["installed"]),
+        ("already_installed", results["already_installed"]),
+        ("pending", results["pending"]),
+        ("manual", results["manual"]),
+        ("failed", results["failed"]),
+    ]
+
+    with report_path.open("w", encoding="utf-8", newline="") as report_file:
+        writer = csv.writer(report_file)
+        writer.writerow(["metric", "value"])
+        writer.writerows(rows)
+
+    logger.info(
+        f"Relatorio CSV gerado em '{report_path}'.",
+        status="report_generated",
+    )
+    return report_path
+
+
 if __name__ == "__main__":
     logger, winget = bootstrap()
     package_profile = load_package_catalog(logger)
     execution_results = execute_package_plan(package_profile, logger, winget)
-    # Proxima fase (V3): gerar relatorio final em CSV na pasta reports
+    report_path = write_execution_report(package_profile, execution_results, logger)
