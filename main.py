@@ -2,7 +2,7 @@ import ctypes
 import sys
 
 from utils.logger import LabLogger
-from utils.package_loader import load_ads_lab_profile
+from utils.package_loader import PackageProfileValidationError, load_ads_lab_profile
 from utils.winget import WinGetManager
 
 
@@ -38,7 +38,12 @@ def bootstrap():
 
 def load_package_catalog(logger):
     """Carrega o catalogo JSON padrao do laboratorio."""
-    profile = load_ads_lab_profile()
+    try:
+        profile = load_ads_lab_profile()
+    except (FileNotFoundError, PackageProfileValidationError) as error:
+        logger.error(f"Falha ao carregar catalogo de pacotes: {error}")
+        sys.exit(1)
+
     package_count = len(profile.get("packages", []))
     logger.info(
         f"Catalogo carregado: perfil '{profile.get('profile', 'desconhecido')}' com {package_count} pacote(s)."
