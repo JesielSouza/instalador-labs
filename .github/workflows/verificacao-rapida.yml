@@ -1,0 +1,42 @@
+name: Verificacao Rapida
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validar-projeto:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependencias
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Validar perfil ADS
+        shell: pwsh
+        run: |
+          @'
+          from utils.package_loader import load_ads_lab_profile
+          profile = load_ads_lab_profile()
+          print(f"Perfil {profile['profile']} validado com {len(profile['packages'])} pacote(s).")
+          '@ | python -
+
+      - name: Executar suite automatizada
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p "test_*.py"
