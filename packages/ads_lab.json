@@ -43,21 +43,21 @@
     },
     {
       "software": "Figma",
-      "install_type": "winget_pending",
+      "install_type": "winget",
       "winget_id": "Figma.Figma",
-      "notes": "Validar comportamento do instalador."
+      "notes": "Instalacao validada no catalogo atual do WinGet."
     },
     {
       "software": "MySQL Workbench",
-      "install_type": "winget_pending",
-      "winget_id": "Oracle.MySQL.Workbench",
-      "notes": "Requer validacao de dependencias."
+      "install_type": "winget",
+      "winget_id": "Oracle.MySQLWorkbench",
+      "notes": "Instalacao validada no catalogo atual do WinGet; dependencia declarada e processada pelo proprio WinGet."
     },
     {
       "software": "XAMPP",
-      "install_type": "winget_pending",
+      "install_type": "winget",
       "winget_id": "ApacheFriends.Xampp.8.2",
-      "notes": "Validar path de instalacao."
+      "notes": "Instalacao validada no catalogo atual do WinGet."
     },
     {
       "software": "Astah Community",
