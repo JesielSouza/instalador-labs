@@ -137,6 +137,49 @@ class WinGetManager:
             "detail": detail,
         }
 
+    def upgrade_package(self, package_id: str) -> bool:
+        """Executa a atualizacao silenciosa de um pacote."""
+        return self.upgrade_package_details(package_id)["success"]
+
+    def upgrade_package_details(self, package_id: str) -> dict:
+        """Executa a atualizacao silenciosa com retorno detalhado para auditoria."""
+        result = self._run_winget_command(
+            [
+                "upgrade",
+                "--id",
+                package_id,
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+            ]
+        )
+        detail = self._summarize_result(result, "atualizacao do pacote")
+        return {
+            **result,
+            "detail": detail,
+        }
+
+    def uninstall_package(self, package_id: str) -> bool:
+        """Executa a desinstalacao silenciosa de um pacote."""
+        return self.uninstall_package_details(package_id)["success"]
+
+    def uninstall_package_details(self, package_id: str) -> dict:
+        """Executa a desinstalacao silenciosa com retorno detalhado para auditoria."""
+        result = self._run_winget_command(
+            [
+                "uninstall",
+                "--id",
+                package_id,
+                "--silent",
+                "--accept-source-agreements",
+            ]
+        )
+        detail = self._summarize_result(result, "desinstalacao do pacote")
+        return {
+            **result,
+            "detail": detail,
+        }
+
     def _run_winget_command(self, args: list[str]) -> dict:
         command = [self.executable, *args]
         try:

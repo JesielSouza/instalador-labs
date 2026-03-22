@@ -1,10 +1,12 @@
 import getpass
 import logging
-import os
 import socket
 from datetime import datetime
+from pathlib import Path
 
 from colorama import Fore, Style, init
+
+from config import LOGS_DIR
 
 # Inicializa as cores do terminal (essencial para Windows)
 init(autoreset=True)
@@ -16,18 +18,15 @@ class LabLogger:
     Focado na observabilidade do status de instalacao nos laboratorios.
     """
 
-    def __init__(self, log_dir="logs"):
-        self.log_dir = log_dir
+    def __init__(self, log_dir=None, observer=None):
+        self.log_dir = Path(log_dir) if log_dir else LOGS_DIR
         self.machine_name = socket.gethostname()
         self.user_name = getpass.getuser()
+        self.observer = observer
 
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
 
-        self.log_file = os.path.join(
-            self.log_dir,
-            f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log",
-        )
+        self.log_file = self.log_dir / f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
         self._setup_logging()
 
@@ -49,7 +48,8 @@ class LabLogger:
         self.logger.addHandler(file_handler)
 
     def _emit(self, level, prefix, color, message, status="general", package_name="-"):
-        print(f"{color}{prefix}{Style.RESET_ALL} {message}")
+        rendered_line = f"{prefix} {message}"
+        print(f"{color}{rendered_line}{Style.RESET_ALL}")
         self.logger.log(
             level,
             message,
@@ -60,6 +60,11 @@ class LabLogger:
                 "package_name": package_name,
             },
         )
+        if self.observer:
+            try:
+                self.observer(rendered_line)
+            except Exception:
+                pass
 
     def info(self, message, status="info", package_name="-"):
         """Log de informacao geral."""

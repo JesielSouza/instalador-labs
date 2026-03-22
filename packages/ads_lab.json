@@ -62,7 +62,8 @@
     {
       "software": "Astah Community",
       "install_type": "manual",
-      "notes": "Licenca estudantil; requer intervencao manual."
+      "manual_reference_url": "https://astah.net/products/astah-community/",
+      "notes": "Edicao Community descontinuada pelo fornecedor; requer avaliacao manual de alternativa oficial ou fluxo academico vigente."
     }
   ]
 }
