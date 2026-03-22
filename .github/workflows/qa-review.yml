@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+permissions:
+  pull-requests: write
+  issues: write
+
 jobs:
   gemini-review:
     runs-on: ubuntu-latest
@@ -34,7 +38,7 @@ jobs:
                 body: JSON.stringify({
                   contents: [{
                     parts: [{
-                      text: `Você é um analista de QA especialista em Python e automação Windows. Analise o diff abaixo e aponte: erros de lógica, ausência de tratamento de erros, cenários de falha não cobertos, e sugestões de melhoria. Seja direto e objetivo.\n\nDiff:\n${diff}`
+                      text: `Você é um analista de QA especialista em Python e automação Windows. Responda exclusivamente em Português do Brasil. Analise o diff abaixo e aponte: erros de lógica, ausência de tratamento de erros, cenários de falha não cobertos, e sugestões de melhoria. Seja direto e objetivo.\n\nDiff:\n${diff}`
                     }]
                   }]
                 })
