@@ -49,9 +49,9 @@
     },
     {
       "software": "MySQL Workbench",
-      "install_type": "winget_pending",
+      "install_type": "winget",
       "winget_id": "Oracle.MySQLWorkbench",
-      "notes": "ID atualizado; ainda requer validacao de dependencias antes de promover."
+      "notes": "Instalacao validada no catalogo atual do WinGet; dependencia declarada e processada pelo proprio WinGet."
     },
     {
       "software": "XAMPP",
