@@ -98,3 +98,7 @@
 * **Acoes**: Revisao das regras do projeto para permitir o versionamento continuo da pasta `brain/` como memoria operacional oficial.
 * **Acoes**: Alinhamento do backlog, tarefa atual e decisoes tecnicas para refletir que a memoria agora acompanha o repositorio.
 * **Resultado**: O projeto passa a manter contexto tecnico e processual atualizado junto com o codigo, reduzindo divergencia entre estado local e remoto.
+
+## [Sessao 20] - Script de Verificacao Rapida (2026-03-21)
+* **Acoes**: Criacao de `verify.ps1` e `verify.bat` para validar a `.venv`, o perfil ADS e a suite automatizada antes de PR ou build.
+* **Validacao**: Execucao local de `verify.ps1` com sucesso, incluindo validacao do catalogo e 4 testes automatizados aprovados.
