@@ -23,18 +23,25 @@ VENV_PYTHON = VENV_DIR / "Scripts" / "python.exe"
 def _build_python_candidates() -> tuple[Path | None, ...]:
     local_app_data = Path(os.environ.get("LOCALAPPDATA", "")) if os.environ.get("LOCALAPPDATA") else None
     program_files = Path(os.environ.get("ProgramFiles", "")) if os.environ.get("ProgramFiles") else None
+    system_drive = Path(os.environ.get("SystemDrive", "C:"))
+    admin_local_app_data = system_drive / "Users" / "Administrador" / "AppData" / "Local"
 
     candidates = [
         VENV_PYTHON,
         Path(sys.executable) if sys.executable else None,
     ]
 
+    python_locations = []
     if local_app_data:
+        python_locations.append(local_app_data / "Programs" / "Python")
+    python_locations.append(admin_local_app_data / "Programs" / "Python")
+
+    for location in python_locations:
         candidates.extend(
             [
-                local_app_data / "Programs" / "Python" / "Python312" / "python.exe",
-                local_app_data / "Programs" / "Python" / "Python311" / "python.exe",
-                local_app_data / "Programs" / "Python" / "Python314" / "python.exe",
+                location / "Python312" / "python.exe",
+                location / "Python311" / "python.exe",
+                location / "Python314" / "python.exe",
             ]
         )
 
