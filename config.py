@@ -4,8 +4,11 @@ from pathlib import Path
 
 
 def _resolve_base_dir() -> Path:
-    """Retorna a base do projeto ou do executavel empacotado."""
+    """Retorna a base do projeto ou o diretorio de recursos do executavel empacotado."""
     if getattr(sys, "frozen", False):
+        bundle_dir = getattr(sys, "_MEIPASS", None)
+        if bundle_dir:
+            return Path(bundle_dir).resolve()
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
 
