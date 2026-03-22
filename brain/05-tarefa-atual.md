@@ -1,7 +1,7 @@
-# Tarefa Atual: Bootstrap de Ambiente Priorizando WinGet
+﻿# Tarefa Atual: Bootstrap de Ambiente Priorizando WinGet
 
-**Status:** Ensaio real validado, relatorio com rastreabilidade por pacote concluido, governanca de QA com Gemini validada em PR real e empacotamento `.exe` validado em smoke test
-**Objetivo:** Garantir que a automacao consiga preparar WinGet, Python e a `.venv` mesmo em maquinas que nao chegam prontas, com distribuicao empacotada e fluxo de QA via PR realmente operacional.
+**Status:** Fluxo do `.exe` validado em campo com instalacao real, feedback visual ao operador consolidado e base do catalogo evoluindo para selecao de perfil e pacotes antes da execucao
+**Objetivo:** Evoluir o instalador de um perfil fixo de laboratorio para uma ferramenta flexivel, com escolha de perfil e de pacotes, preservando a estabilidade operacional do `.exe` e o fluxo de QA do projeto.
 
 ## Checklist de Execucao
 - [x] **Task 4.1**: Popular `packages/ads_lab.json` com os softwares da base institucional que ja possuem dados suficientes para o schema atual.
@@ -30,7 +30,24 @@
 - O fluxo completo de governanca foi exercitado na pratica: branch dedicada, PR, comentario automatizado do Gemini e merge posterior.
 - `build_exe.ps1` gerou `dist\InstaladorLabs\InstaladorLabs.exe` com sucesso, e o executavel abriu corretamente ate o bloqueio esperado por falta de privilegio administrativo.
 
+## Validacao Mais Recente
+- O InstaladorLabs.exe reconstruido executou com sucesso em maquina real e exibiu feedback visual ao operador ao final da execucao.
+- O fluxo passou a mostrar um resumo com totais e caminho do relatorio, evitando a percepcao de encerramento silencioso.
+- Em maquina ja preparada por testes anteriores, o resultado observado foi `0 installed`, `5 already_installed`, `0 pending`, `1 manual`, `0 failed`, `0 blocked`.
+- O relatorio correspondente foi gerado em `dist\\InstaladorLabs\\reports\\execution_report_20260322_113118.csv`.
+- Logs, relatorios e downloads do executavel agora devem permanecer ao lado do `.exe`, enquanto o catalogo continua vindo do bundle empacotado.
+
+## Iteracao em Andamento
+- O carregador de catalogo agora deve evoluir para listar perfis disponiveis e permitir filtragem explicita dos pacotes selecionados pelo operador.
+- A interface do `.exe` agora deve consolidar a escolha de perfil, pacotes e operacao (`instalar`, `atualizar`, `desinstalar`) antes de avancar para automacoes fora do WinGet.
+- Itens fora do WinGet devem evoluir para downloads oficiais catalogados, nao para busca aberta e generica na web; quando o fornecedor descontinuar o produto, o catalogo deve apontar para a referencia oficial e manter o fluxo manual.
+
 ## Instrucoes para o Codex
-> A proxima iteracao deve retomar melhorias do produto e reduzir o ruido operacional remanescente, comecando pela resolucao do caminho legado de Python 3.14 que ainda aparece nos testes locais.
+> A proxima iteracao deve priorizar polish de operador e estabilidade de distribuicao, sem perder o foco em uso real controlado e sem abrir PRs desnecessarias.
 
 - A memoria versionada em `brain/` deve acompanhar cada iteracao relevante do produto.
+- Consolidar mudancas relacionadas na `trabalho/codex` antes de abrir nova PR, para economizar cota do Gemini.
+- Melhorias de UX do `.exe` com cara de instalador tradicional devem ser estudadas, mas nao sao prioridade acima da estabilidade operacional imediata.
+
+
+

@@ -1,4 +1,4 @@
-# Planejamento de Fases
+﻿# Planejamento de Fases
 
 ## FASE 1: Estabilizacao do Ambiente
 - [x] Task 1.1: Criar `.gitignore` robusto para proteger o "Cerebro" e logs.
@@ -28,12 +28,21 @@
 - [x] Task 4.12: Validar o fluxo branch -> PR -> comentario do Gemini -> merge em caso real.
 
 ## PROXIMA FASE
-- [ ] Eliminar o ruido do caminho legado de Python 3.14 nas execucoes locais e no build.
-- [ ] Reavaliar `config.py` e scripts de runtime para descoberta de Python mais aderente ao host real.
-- [ ] Considerar evolucao do catalogo e da instalacao automatizada alem do nucleo seguro apos estabilizar o runtime.
-
+- [x] Preparar distribuicao publica via GitHub Releases com pacote `.zip` do bundle funcional.
+- [ ] Evoluir o catalogo para suportar multiplos perfis e selecao de subconjuntos de pacotes pelo operador.
+- [x] Introduzir modos operacionais alem de instalar, preparando base para atualizar e desinstalar via WinGet.
+- [x] Estruturar downloads oficiais catalogados para softwares fora do WinGet, com URL controlada, nome de arquivo e estrategia silenciosa quando houver.
+- [ ] Evoluir a interface do `.exe` para expor a escolha de operacao ao operador com validacao visual em uso real.
+- [ ] Popular o catalogo com pelo menos um item manual que use `official_download` em ambiente e URL oficialmente validados.
+- [x] Eliminar o ruido do caminho legado de Python 3.14 nas execucoes locais e no build.
+- [x] Reavaliar `config.py` e scripts de runtime para descoberta de Python mais aderente ao host real.
+- [x] Adicionar script de verificacao rapida para validar perfil ADS e executar a suite antes de PR/build.
+- [x] Adicionar workflow de verificacao rapida em PR para validar perfil ADS e suite automatizada no GitHub Actions.
+- [x] Validar o `.exe` em campo e adicionar feedback visual ao operador ao final da execucao.
+- [ ] Refinar ainda mais a experiencia do operador no `.exe`, incluindo estudo de interface com cara de instalador tradicional, selecao de perfil e escolha de pacotes.
+- [ ] Avaliar se a janela de console deve permanecer aberta ate confirmacao do operador em todos os cenarios relevantes.
+- [ ] Continuar expandindo a robustez do catalogo e a validacao em maquinas mais limpas ou VMs.
 - [ ] Manter a memoria versionada em `brain/` sincronizada com mudancas relevantes de produto e processo.
 
-- [x] Adicionar script de verificacao rapida para validar perfil ADS e executar a suite antes de PR/build.
 
-- [x] Adicionar workflow de verificacao rapida em PR para validar perfil ADS e suite automatizada no GitHub Actions.
+

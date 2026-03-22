@@ -1,4 +1,4 @@
-# Log de Sessoes
+﻿# Log de Sessoes
 
 ## [Sessao 01] - Estruturacao Inicial (2026-03-21)
 * **Acoes**: Definicao da estrutura de pastas `brain/` e criacao dos arquivos de governanca.
@@ -107,3 +107,46 @@
 * **Acoes**: Criacao do workflow `verificacao-rapida.yml` no GitHub Actions para validar o perfil ADS e executar a suite automatizada em PRs.
 * **Decisao**: O workflow roda em `windows-latest` para manter compatibilidade com o uso de `winreg` e com o comportamento esperado do projeto.
 * **Resultado**: O repositorio passa a ter uma verifica??o t?cnica objetiva e barata antes do merge, al?m do coment?rio do Gemini.
+## [Sessao 22] - EXE Validado em Campo com Feedback ao Operador (2026-03-22)
+* **Acoes**: Reconstrucao do `InstaladorLabs.exe` com ajuste de caminhos para separar recursos empacotados dos artefatos visiveis ao operador.
+* **Acoes**: Evolucao do fluxo principal para exibir resumo final ao operador com totais da execucao e caminho do relatorio, alem de mensagens claras em erros criticos.
+* **Acoes**: Ajuste do `LabLogger` para persistir logs no diretorio de runtime do executavel e ampliacao da suite automatizada para cobrir o modo empacotado.
+* **Validacao**: Execucao real do `.exe` em maquina de uso confirmou feedback visual correto e relatorio gerado em `dist\InstaladorLabs\reports\execution_report_20260322_113118.csv`.
+* **Resultado**: `0 installed`, `5 already_installed`, `0 pending`, `1 manual`, `0 failed`, `0 blocked` em host ja preparado por testes anteriores.
+
+## [Sessao 23] - Polish do Resumo Final do EXE (2026-03-22)
+* **Acoes**: Evolucao do resumo final do executavel para listar explicitamente os itens manuais pendentes e exibir caminhos de relatorio e log ao operador.
+* **Validacao**: Suite automatizada permaneceu verde com `6` testes aprovados apos a mudanca.
+* **Resultado**: O fluxo empacotado fica mais proximo da experiencia esperada de um instalador, orientando melhor o proximo passo do operador.
+
+## [Sessao 24] - Base para Catalogo Flexivel e Selecao de Pacotes (2026-03-22)
+* **Acoes**: Evolucao de `utils/package_loader.py` para listar perfis disponiveis, carregar perfil por nome e filtrar subconjuntos de pacotes selecionados pelo operador.
+* **Acoes**: Evolucao de `main.py` para permitir escolha de perfil e de pacotes na interface do `.exe`, preservando o fluxo atual de instalacao e o relatorio por pacote.
+* **Acoes**: Adicao de `tests/test_package_loader.py` para cobrir selecao de pacotes, ordem preservada e listagem de perfis.
+* **Validacao**: Suite automatizada expandida para `10` testes aprovados.
+* **Resultado**: O produto deixa de depender exclusivamente do perfil ADS fixo e ganha a primeira base para instalacao sob demanda por selecao do operador.
+
+## [Sessao 25] - Base Operacional para Instalar, Atualizar e Desinstalar (2026-03-22)
+* **Acoes**: Evolucao de `utils/winget.py` para suportar `install`, `upgrade` e `uninstall` com diagnostico detalhado por comando.
+* **Acoes**: Evolucao de `main.py` para executar o plano por operacao, ajustar o resumo ao contexto da acao e registrar `operation` no relatorio CSV.
+* **Acoes**: Evolucao da interface do `.exe` para expor a escolha de acao junto da selecao de perfil e pacotes.
+* **Validacao**: Suite automatizada expandida para `12` testes aprovados.
+* **Resultado**: O produto deixa de ser apenas um instalador fixo e passa a ter a primeira base real de gerenciador de software para laboratorio.
+
+## [Sessao 26] - Base para Downloads Oficiais Catalogados (2026-03-22)
+* **Acoes**: Evolucao de `utils/package_loader.py` para validar o novo bloco `official_download` em itens manuais.
+* **Acoes**: Evolucao de `utils/fallback_installer.py` para baixar instaladores oficiais catalogados tambem em fluxo assistido, reutilizando `.downloads`.
+* **Acoes**: Evolucao de `main.py` para registrar `manual_download` quando um item manual puder ao menos baixar seu instalador oficial para o operador.
+* **Validacao**: Suite automatizada expandida para `14` testes aprovados.
+* **Resultado**: O produto passa a suportar assistencia segura para softwares fora do WinGet sem depender de busca aberta na web.
+
+## [Sessao 27] - Catalogo Manual com Referencia Oficial Segura (2026-03-22)
+* **Acoes**: Atualizacao do `packages/ads_lab.json` para registrar `manual_reference_url` do `Astah Community`, sem forcar automacao por origem nao validada.
+* **Acoes**: Evolucao de `main.py` e dos testes para expor a referencia oficial no `detail` e no relatorio CSV quando um item manual nao possuir download seguro automatizado.
+* **Validacao**: Suite automatizada expandida para `15` testes aprovados.
+* **Resultado**: O produto passa a orientar melhor o operador em itens manuais sem assumir links inseguros ou scraping aberto da web.
+
+## [Sessao 28] - Preparacao para Distribuicao Publica (2026-03-22)
+* **Acoes**: Criacao de `README.md` com orientacao de download do executavel pela aba `Releases` e uso do bundle Windows em ambiente real.
+* **Acoes**: Criacao do workflow `publicar-exe.yml` para gerar o bundle, compactar o conteudo de `dist\InstaladorLabs` e publicar a release no GitHub.
+* **Resultado**: O projeto passa a ter caminho claro para disponibilizacao publica do artefato funcional sem versionar `dist/` no reposit?rio.

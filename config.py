@@ -3,8 +3,8 @@ import sys
 from pathlib import Path
 
 
-def _resolve_base_dir() -> Path:
-    """Retorna a base do projeto ou o diretorio de recursos do executavel empacotado."""
+def _resolve_resource_dir() -> Path:
+    """Retorna o diretorio de recursos do projeto ou do bundle empacotado."""
     if getattr(sys, "frozen", False):
         bundle_dir = getattr(sys, "_MEIPASS", None)
         if bundle_dir:
@@ -13,14 +13,23 @@ def _resolve_base_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
-BASE_DIR = _resolve_base_dir()
-BRAIN_DIR = BASE_DIR / "brain"
-PACKAGES_DIR = BASE_DIR / "packages"
-LOGS_DIR = BASE_DIR / "logs"
-REPORTS_DIR = BASE_DIR / "reports"
-DOWNLOADS_DIR = BASE_DIR / ".downloads"
+def _resolve_runtime_dir() -> Path:
+    """Retorna o diretorio onde o operador deve encontrar artefatos do instalador."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+RESOURCE_DIR = _resolve_resource_dir()
+RUNTIME_DIR = _resolve_runtime_dir()
+BASE_DIR = RESOURCE_DIR
+BRAIN_DIR = RUNTIME_DIR / "brain"
+PACKAGES_DIR = RESOURCE_DIR / "packages"
+LOGS_DIR = RUNTIME_DIR / "logs"
+REPORTS_DIR = RUNTIME_DIR / "reports"
+DOWNLOADS_DIR = RUNTIME_DIR / ".downloads"
 DEFAULT_PACKAGE_PROFILE = PACKAGES_DIR / "ads_lab.json"
-VENV_DIR = BASE_DIR / ".venv"
+VENV_DIR = RUNTIME_DIR / ".venv"
 VENV_PYTHON = VENV_DIR / "Scripts" / "python.exe"
 
 def _build_python_candidates() -> tuple[Path | None, ...]:

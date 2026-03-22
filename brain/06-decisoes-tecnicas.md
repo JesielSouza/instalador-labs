@@ -46,7 +46,7 @@
 * **Status**: Implementado.
 
 ## [ADR-010] - Execucao respeitando maturidade do catalogo
-* **Contexto**: As regras do projeto proíbem automatizar itens ainda marcados como `winget_pending`, e o catalogo tambem pode conter softwares manuais.
+* **Contexto**: As regras do projeto proÃƒÆ’Ã‚Â­bem automatizar itens ainda marcados como `winget_pending`, e o catalogo tambem pode conter softwares manuais.
 * **Decisao**: O loop de execucao trata `winget` como automatizavel com checagem de idempotencia, `winget_pending` como apenas sinalizacao para teste manual e `manual` como registro sem execucao.
 * **Status**: Implementado.
 
@@ -113,3 +113,31 @@
 * **Decisao**: A pasta `brain/` passa a ser versionada no repositorio como memoria operacional oficial, devendo ser atualizada junto com mudancas relevantes de produto, QA e runtime.
 * **Decisao**: Apenas artefatos temporarios, logs, relatorios locais e segredos continuam fora do versionamento.
 * **Status**: Aprovado para adocao imediata.
+## [ADR-023] - Separacao entre recursos do bundle e artefatos do operador
+* **Contexto**: O executavel empacotado precisa ler o catalogo e demais recursos do bundle do PyInstaller, mas logs, relatorios e downloads devem ficar em local visivel ao operador ao lado do .exe.
+* **Decisao**: Separar `RESOURCE_DIR` e `RUNTIME_DIR` em `config.py`, mantendo `packages/` no bundle e redirecionando `logs/`, `reports/` e `.downloads/` para o diretorio do executavel quando rodar empacotado.
+* **Status**: Implementado.
+
+## [ADR-024] - Feedback visual obrigatorio no encerramento do executavel
+* **Contexto**: Na validacao real, o `.exe` concluiu a execucao corretamente, mas a ausencia de uma confirmacao visual ao operador dava a impressao de encerramento silencioso.
+* **Decisao**: Exibir uma mensagem final com resumo da execucao e caminho do relatorio quando o fluxo rodar como executavel empacotado, e exibir tambem erros criticos de bootstrap/catalogo ao operador.
+* **Status**: Implementado e validado em campo.
+
+## [ADR-025] - Otimizacao de PRs para economizar cota do Gemini
+* **Contexto**: O uso em conta gratuita do Gemini exige reduzir disparos desnecessarios do workflow de QA em PRs pequenas ou excessivamente iterativas.
+* **Decisao**: Consolidar mudancas relacionadas na branch `trabalho/codex`, abrir PR apenas quando o bloco estiver maduro e evitar pushes intermediarios desnecessarios em PR aberta.
+* **Status**: Aprovado para adocao imediata.
+
+
+
+## [ADR-026] - Downloads oficiais catalogados em vez de busca aberta na web
+* **Contexto**: Itens fora do WinGet ainda precisam de tratamento assistido, mas a busca aberta por instaladores na web introduz risco alto de origem incorreta, quebra de URL e variacao nao auditada.
+* **Decisao**: O catalogo passa a aceitar `official_download` com URL controlada e nome de arquivo opcional, reutilizando a pasta `.downloads` do produto e registrando o caminho no resultado por pacote.
+* **Consequencia**: Itens manuais podem orientar o operador com download oficial assistido sem abrir espaco para scraping generico ou busca aberta fora do catalogo.
+* **Status**: Implementado.
+
+## [ADR-027] - Distribuicao publica via GitHub Releases
+* **Contexto**: O executavel ja atingiu um nivel de maturidade que permite distribuicao para uso real, mas `dist/` nao deve ser versionado diretamente no repositorio.
+* **Decisao**: Publicar o bundle funcional do Windows via GitHub Releases, gerado por workflow dedicado e compactado em `.zip`, mantendo o repositorio limpo e reprodutivel.
+* **Consequencia**: O download do instalador passa a acontecer pela aba `Releases`, com README orientando o uso e o workflow cuidando da publicacao.
+* **Status**: Implementado.

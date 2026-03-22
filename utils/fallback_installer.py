@@ -8,7 +8,7 @@ from config import DOWNLOADS_DIR
 
 
 class DirectInstallerManager:
-    """Gerencia fallback por instalador direto quando o WinGet nao esta acessivel."""
+    """Gerencia fallback por instalador direto e downloads oficiais catalogados."""
 
     def is_package_present(self, package: dict) -> bool:
         detect_names = package.get("detect_names", [])
@@ -39,11 +39,14 @@ class DirectInstallerManager:
 
         return False
 
-    def download_installer(self, package: dict, logger) -> Path:
-        """Baixa o instalador oficial para cache local."""
-        fallback = package["fallback_installer"]
-        download_url = fallback["download_url"]
-        file_name = fallback.get("file_name") or self._infer_file_name(download_url)
+    def download_installer(self, package: dict, logger, config_key: str = "fallback_installer") -> Path:
+        """Baixa um instalador oficial catalogado para cache local."""
+        installer_config = package.get(config_key)
+        if not installer_config:
+            raise ValueError(f"Pacote sem configuracao '{config_key}': {package['software']}")
+
+        download_url = installer_config["download_url"]
+        file_name = installer_config.get("file_name") or self._infer_file_name(download_url)
         target_dir = DOWNLOADS_DIR
         target_dir.mkdir(parents=True, exist_ok=True)
         target_path = target_dir / file_name
@@ -51,22 +54,26 @@ class DirectInstallerManager:
         if target_path.exists():
             logger.info(
                 f"Instalador em cache reutilizado para '{package['software']}'.",
-                status="fallback_cached",
+                status="fallback_cached" if config_key == "fallback_installer" else "manual_download_cached",
                 package_name=package["software"],
             )
             return target_path
 
         logger.info(
             f"Baixando instalador oficial de '{package['software']}'...",
-            status="fallback_downloading",
+            status="fallback_downloading" if config_key == "fallback_installer" else "manual_downloading",
             package_name=package["software"],
         )
         urllib.request.urlretrieve(download_url, target_path)
         return target_path
 
+    def download_manual_installer(self, package: dict, logger) -> Path:
+        """Baixa um instalador oficial de item manual para acao assistida do operador."""
+        return self.download_installer(package, logger, config_key="official_download")
+
     def install_package(self, package: dict, logger) -> bool:
         """Executa o fallback por instalador direto."""
-        installer_path = self.download_installer(package, logger)
+        installer_path = self.download_installer(package, logger, config_key="fallback_installer")
         install_args = package["fallback_installer"]["install_args"]
 
         logger.info(
