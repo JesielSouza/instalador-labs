@@ -29,23 +29,49 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const core = require('@actions/core');
+
+            if (!process.env.GEMINI_API_KEY) {
+              throw new Error('Secret GEMINI_API_KEY ausente.');
+            }
+
             const diff = fs.readFileSync('diff.txt', 'utf8').slice(0, 3000);
+            const payload = {
+              contents: [{
+                parts: [{
+                  text: `Você é um analista de QA especialista em Python e automação Windows. Responda exclusivamente em Português do Brasil. Analise o diff abaixo e aponte: erros de lógica, ausência de tratamento de erros, cenários de falha não cobertos, e sugestões de melhoria. Seja direto e objetivo.\n\nDiff:\n${diff}`
+                }]
+              }]
+            };
+
             const res = await fetch(
               `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  contents: [{
-                    parts: [{
-                      text: `Você é um analista de QA especialista em Python e automação Windows. Analise o diff abaixo e aponte: erros de lógica, ausência de tratamento de erros, cenários de falha não cobertos, e sugestões de melhoria. Seja direto e objetivo.\n\nDiff:\n${diff}`
-                    }]
-                  }]
-                })
+                body: JSON.stringify(payload)
               }
             );
-            const data = await res.json();
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Gemini não retornou análise.';
+
+            const rawBody = await res.text();
+            core.info(`Gemini raw response: ${rawBody}`);
+
+            if (!res.ok) {
+              throw new Error(`Gemini HTTP ${res.status}: ${rawBody}`);
+            }
+
+            let data;
+            try {
+              data = JSON.parse(rawBody);
+            } catch (error) {
+              throw new Error(`Resposta do Gemini não é JSON válido: ${error.message}`);
+            }
+
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+            if (!text) {
+              throw new Error(`Gemini não retornou análise utilizável. Resposta: ${rawBody}`);
+            }
+
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
