@@ -76,6 +76,30 @@ def load_package_catalog(logger):
     return profile
 
 
+def _check_winget_package_status(winget, package_id: str) -> dict:
+    """Consulta o status de um pacote via WinGet com diagnostico detalhado quando disponivel."""
+    if hasattr(winget, "check_package_status_details"):
+        return winget.check_package_status_details(package_id)
+
+    found = winget.check_package_status(package_id)
+    return {
+        "found": found,
+        "detail": "Pacote localizado pelo WinGet antes da instalacao." if found else "Pacote nao localizado pelo WinGet antes da instalacao.",
+    }
+
+
+def _install_winget_package(winget, package_id: str) -> dict:
+    """Executa a instalacao via WinGet com diagnostico detalhado quando disponivel."""
+    if hasattr(winget, "install_package_details"):
+        return winget.install_package_details(package_id)
+
+    success = winget.install_package(package_id)
+    return {
+        "success": success,
+        "detail": "Instalado com sucesso pelo WinGet." if success else "Falha na instalacao automatizada pelo WinGet.",
+    }
+
+
 def process_package(package, logger, winget, direct_installer):
     """Processa um pacote do catalogo de acordo com seu tipo de instalacao."""
     package_name = package["software"]
@@ -155,7 +179,8 @@ def process_package(package, logger, winget, direct_installer):
         package_name=package_name,
     )
 
-    if winget.check_package_status(winget_id):
+    package_status = _check_winget_package_status(winget, winget_id)
+    if package_status["found"]:
         logger.success(package_name, status="already_installed")
         result["status"] = "already_installed"
         result["install_method"] = "winget_detect"
@@ -168,7 +193,8 @@ def process_package(package, logger, winget, direct_installer):
         package_name=package_name,
     )
 
-    if winget.install_package(winget_id):
+    install_result = _install_winget_package(winget, winget_id)
+    if install_result["success"]:
         logger.success(package_name, status="installed")
         result["status"] = "installed"
         result["install_method"] = "winget"
@@ -176,13 +202,13 @@ def process_package(package, logger, winget, direct_installer):
         return result
 
     logger.error(
-        f"Falha na instalacao automatizada de '{package_name}' ({winget_id}).",
+        f"Falha na instalacao automatizada de '{package_name}' ({winget_id}): {install_result['detail']}",
         status="install_error",
         package_name=package_name,
     )
     result["status"] = "failed"
     result["install_method"] = "winget"
-    result["detail"] = "Falha na instalacao automatizada pelo WinGet."
+    result["detail"] = install_result["detail"]
     return result
 
 

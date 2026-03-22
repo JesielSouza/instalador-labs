@@ -101,37 +101,91 @@ class WinGetManager:
         Verifica se um pacote ja esta instalado (Idempotencia).
         Retorna True se o pacote for encontrado pelo ID.
         """
-        try:
-            result = subprocess.run(
-                [self.executable, "list", "--id", package_id],
-                capture_output=True,
-                text=True,
-            )
-            return package_id.lower() in result.stdout.lower()
-        except Exception:
-            return False
+        return self.check_package_status_details(package_id)["found"]
+
+    def check_package_status_details(self, package_id: str) -> dict:
+        """Retorna diagnosticos completos da consulta `winget list --id`."""
+        result = self._run_winget_command(["list", "--id", package_id])
+        stdout = result["stdout"]
+        found = result["success"] and package_id.lower() in stdout.lower()
+        detail = self._summarize_result(result, "consulta do pacote")
+        return {
+            **result,
+            "found": found,
+            "detail": detail,
+        }
 
     def install_package(self, package_id: str) -> bool:
         """Executa a instalacao silenciosa de um pacote."""
+        return self.install_package_details(package_id)["success"]
+
+    def install_package_details(self, package_id: str) -> dict:
+        """Executa a instalacao silenciosa com retorno detalhado para auditoria."""
+        result = self._run_winget_command(
+            [
+                "install",
+                "--id",
+                package_id,
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+            ]
+        )
+        detail = self._summarize_result(result, "instalacao do pacote")
+        return {
+            **result,
+            "detail": detail,
+        }
+
+    def _run_winget_command(self, args: list[str]) -> dict:
+        command = [self.executable, *args]
         try:
-            subprocess.run(
-                [
-                    self.executable,
-                    "install",
-                    "--id",
-                    package_id,
-                    "--silent",
-                    "--accept-package-agreements",
-                    "--accept-source-agreements",
-                ],
+            completed = subprocess.run(
+                command,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 check=True,
             )
-            return True
+            return {
+                "success": True,
+                "returncode": completed.returncode,
+                "stdout": completed.stdout.strip(),
+                "stderr": completed.stderr.strip(),
+                "command": command,
+            }
         except subprocess.CalledProcessError as error:
-            print(f"Erro ao instalar {package_id}: {error.stderr}")
-            return False
+            return {
+                "success": False,
+                "returncode": error.returncode,
+                "stdout": (error.stdout or "").strip(),
+                "stderr": (error.stderr or "").strip(),
+                "command": command,
+            }
+        except Exception as error:
+            return {
+                "success": False,
+                "returncode": None,
+                "stdout": "",
+                "stderr": str(error),
+                "command": command,
+            }
+
+    @staticmethod
+    def _summarize_result(result: dict, operation_label: str) -> str:
+        if result["success"]:
+            return f"Sucesso na {operation_label}."
+
+        message = result["stderr"] or result["stdout"] or "Sem saida detalhada do WinGet."
+        message = " ".join(message.split())
+        if len(message) > 240:
+            message = message[:237] + "..."
+
+        return (
+            f"Falha na {operation_label}"
+            + (f" (codigo {result['returncode']})" if result["returncode"] is not None else "")
+            + f": {message}"
+        )
 
     @staticmethod
     def _read_windows_registry_value(value_name: str) -> str | None:

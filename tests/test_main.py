@@ -24,10 +24,11 @@ class FakeLogger:
 
 
 class FakeWinget:
-    def __init__(self, installed=True, detected_ids=None, install_success_ids=None):
+    def __init__(self, installed=True, detected_ids=None, install_success_ids=None, install_failure_detail=None):
         self.installed = installed
         self.detected_ids = set(detected_ids or [])
         self.install_success_ids = set(install_success_ids or [])
+        self.install_failure_detail = install_failure_detail or "Falha na instalacao automatizada pelo WinGet."
 
     def is_installed(self):
         return self.installed
@@ -35,8 +36,22 @@ class FakeWinget:
     def check_package_status(self, package_id):
         return package_id in self.detected_ids
 
+    def check_package_status_details(self, package_id):
+        found = package_id in self.detected_ids
+        return {
+            "found": found,
+            "detail": "Pacote localizado pelo WinGet antes da instalacao." if found else "Pacote nao localizado pelo WinGet antes da instalacao.",
+        }
+
     def install_package(self, package_id):
         return package_id in self.install_success_ids
+
+    def install_package_details(self, package_id):
+        success = package_id in self.install_success_ids
+        return {
+            "success": success,
+            "detail": "Instalado com sucesso pelo WinGet." if success else self.install_failure_detail,
+        }
 
 
 class FakeDirectInstaller:
@@ -157,6 +172,33 @@ class ExecutePackagePlanTests(unittest.TestCase):
         )
         self.assertEqual(results["packages"][0]["install_method"], "fallback_direct")
         self.assertEqual(results["packages"][1]["install_method"], "blocked_no_winget")
+
+    def test_execute_package_plan_preserves_detailed_winget_failure_reason(self):
+        profile = {
+            "profile": "teste",
+            "description": "falha detalhada do winget",
+            "packages": [
+                {
+                    "software": "Pacote Problematico",
+                    "install_type": "winget",
+                    "winget_id": "Vendor.Broken",
+                    "notes": "Deve expor o motivo da falha.",
+                }
+            ],
+        }
+        logger = FakeLogger()
+        winget = FakeWinget(
+            installed=True,
+            install_failure_detail="Falha na instalacao do pacote (codigo 1978335212): instalador exigiu interacao manual.",
+        )
+        direct_installer = FakeDirectInstaller()
+
+        results = main.execute_package_plan(profile, logger, winget, direct_installer)
+
+        self.assertEqual(results["summary"]["failed"], 1)
+        self.assertEqual(results["packages"][0]["status"], "failed")
+        self.assertIn("codigo 1978335212", results["packages"][0]["detail"])
+        self.assertIn("interacao manual", results["packages"][0]["detail"])
 
 
 class WriteExecutionReportTests(unittest.TestCase):

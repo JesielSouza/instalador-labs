@@ -22,7 +22,14 @@
 - [x] Task 4.6: Implementar fallback por instalador direto oficial para o nucleo seguro do catalogo.
 - [x] Task 4.7: Executar o primeiro teste real com `run.bat`, validando download e instalacao direta de `Visual Studio Code` e `Python 3.12`.
 - [x] Task 4.8: Ajustar o bootstrap para restaurar WinGet antes de depender de Python.
+- [x] Task 4.9: Melhorar os relatorios para discriminar metodo de instalacao (`winget`, `fallback direto`, `manual`, `pending`).
+- [x] Task 4.10: Validar e corrigir o workflow `qa-review.yml` ate obter comentario real do Gemini em PR.
+- [x] Task 4.11: Validar o empacotamento atual em `.exe` com smoke test local.
+- [x] Task 4.12: Validar o fluxo branch -> PR -> comentario do Gemini -> merge em caso real.
 
 ## PROXIMA FASE
-- [ ] Melhorar os relatorios para discriminar metodo de instalacao (`winget`, `fallback direto`, `manual`, `pending`).
-- [ ] Avaliar empacotamento futuro em `.exe` depois do ensaio real.
+- [ ] Eliminar o ruido do caminho legado de Python 3.14 nas execucoes locais e no build.
+- [ ] Reavaliar `config.py` e scripts de runtime para descoberta de Python mais aderente ao host real.
+- [ ] Considerar evolucao do catalogo e da instalacao automatizada alem do nucleo seguro apos estabilizar o runtime.
+
+- [ ] Manter a memoria versionada em `brain/` sincronizada com mudancas relevantes de produto e processo.
