@@ -33,3 +33,5 @@
 - [ ] Considerar evolucao do catalogo e da instalacao automatizada alem do nucleo seguro apos estabilizar o runtime.
 
 - [ ] Manter a memoria versionada em `brain/` sincronizada com mudancas relevantes de produto e processo.
+
+- [x] Adicionar script de verificacao rapida para validar perfil ADS e executar a suite antes de PR/build.
