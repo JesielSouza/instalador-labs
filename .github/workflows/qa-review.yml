@@ -29,8 +29,6 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const core = require('@actions/core');
-
             if (!process.env.GEMINI_API_KEY) {
               throw new Error('Secret GEMINI_API_KEY ausente.');
             }
@@ -54,7 +52,7 @@ jobs:
             );
 
             const rawBody = await res.text();
-            core.info(`Gemini raw response: ${rawBody}`);
+            console.log(`Gemini raw response: ${rawBody}`);
 
             if (!res.ok) {
               throw new Error(`Gemini HTTP ${res.status}: ${rawBody}`);
