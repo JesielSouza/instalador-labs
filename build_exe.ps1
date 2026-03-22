@@ -39,6 +39,9 @@ if (-not (Test-VenvHealthy)) {
 
 Write-Host "[build] Instalando PyInstaller na venv..." -ForegroundColor Cyan
 & $VenvPython -m pip install pyinstaller
+if ($LASTEXITCODE -ne 0) {
+    throw "Falha ao instalar o PyInstaller na venv."
+}
 
 Write-Host "[build] Gerando executavel..." -ForegroundColor Cyan
 & $VenvPython -m PyInstaller `
@@ -49,5 +52,13 @@ Write-Host "[build] Gerando executavel..." -ForegroundColor Cyan
     --add-data "packages;packages" `
     --collect-all colorama `
     $MainScript
+if ($LASTEXITCODE -ne 0) {
+    throw "Falha ao gerar o executavel com PyInstaller."
+}
 
-Write-Host "[build] Build concluido em dist\\InstaladorLabs" -ForegroundColor Green
+$BundledCatalog = Join-Path $ProjectRoot "dist\InstaladorLabs\_internal\packages\ads_lab.json"
+if (-not (Test-Path $BundledCatalog)) {
+    throw "Build concluido sem catalogo empacotado em $BundledCatalog"
+}
+
+Write-Host "[build] Build concluido em dist\InstaladorLabs" -ForegroundColor Green

@@ -1,6 +1,9 @@
 import csv
+import importlib
 import tempfile
+import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import main
@@ -64,6 +67,35 @@ class FakeDirectInstaller:
 
     def install_package(self, package, logger):
         return package["software"] in self.install_success_names
+
+
+class ConfigRuntimeTests(unittest.TestCase):
+    def test_resolve_base_dir_uses_meipass_when_frozen(self):
+        import config
+
+        original_frozen = getattr(sys, "frozen", None)
+        original_meipass = getattr(sys, "_MEIPASS", None)
+        had_frozen = hasattr(sys, "frozen")
+        had_meipass = hasattr(sys, "_MEIPASS")
+
+        sys.frozen = True
+        sys._MEIPASS = r"C:\bundle"
+        try:
+            importlib.reload(config)
+            self.assertEqual(str(config.BASE_DIR), r"C:\bundle")
+            self.assertEqual(str(config.DEFAULT_PACKAGE_PROFILE), r"C:\bundle\packages\ads_lab.json")
+        finally:
+            if had_frozen:
+                sys.frozen = original_frozen
+            else:
+                delattr(sys, "frozen")
+
+            if had_meipass:
+                sys._MEIPASS = original_meipass
+            else:
+                delattr(sys, "_MEIPASS")
+
+            importlib.reload(config)
 
 
 class ExecutePackagePlanTests(unittest.TestCase):
