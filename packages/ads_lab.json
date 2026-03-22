@@ -55,9 +55,9 @@
     },
     {
       "software": "XAMPP",
-      "install_type": "winget_pending",
+      "install_type": "winget",
       "winget_id": "ApacheFriends.Xampp.8.2",
-      "notes": "Validar path de instalacao."
+      "notes": "Instalacao validada no catalogo atual do WinGet."
     },
     {
       "software": "Astah Community",
