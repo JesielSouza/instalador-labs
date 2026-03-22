@@ -85,6 +85,7 @@ def process_package(package, logger, winget, direct_installer):
         "package": package_name,
         "install_type": install_type,
         "winget_id": winget_id,
+        "catalog_notes": package.get("notes", ""),
         "status": "",
         "install_method": "",
         "detail": "",
@@ -270,6 +271,7 @@ def write_execution_report(profile, results, logger):
                 "install_method",
                 "install_type",
                 "winget_id",
+                "catalog_notes",
                 "detail",
             ]
         )
@@ -282,6 +284,7 @@ def write_execution_report(profile, results, logger):
                     package_result["install_method"],
                     package_result["install_type"],
                     package_result["winget_id"],
+                    package_result["catalog_notes"],
                     package_result["detail"],
                 ]
             )
