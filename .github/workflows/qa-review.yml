@@ -29,8 +29,6 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const core = require('@actions/core');
-
             if (!process.env.GEMINI_API_KEY) {
               throw new Error('Secret GEMINI_API_KEY ausente.');
             }
@@ -45,7 +43,7 @@ jobs:
             };
 
             const res = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -54,17 +52,35 @@ jobs:
             );
 
             const rawBody = await res.text();
-            core.info(`Gemini raw response: ${rawBody}`);
-
-            if (!res.ok) {
-              throw new Error(`Gemini HTTP ${res.status}: ${rawBody}`);
-            }
+            console.log(`Gemini raw response: ${rawBody}`);
 
             let data;
             try {
               data = JSON.parse(rawBody);
             } catch (error) {
               throw new Error(`Resposta do Gemini não é JSON válido: ${error.message}`);
+            }
+
+            if (res.status === 429) {
+              const mensagemQuota = [
+                '## 🤖 QA Review — Gemini',
+                '',
+                'O Gemini não conseguiu analisar este PR porque a cota da API foi excedida.',
+                'Como este repositório está usando a camada gratuita, o review automático foi ignorado nesta execução.',
+                'Quando a cota voltar, basta atualizar o PR para tentar novamente.'
+              ].join('\n');
+
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: mensagemQuota
+              });
+              return;
+            }
+
+            if (!res.ok) {
+              throw new Error(`Gemini HTTP ${res.status}: ${rawBody}`);
             }
 
             const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();

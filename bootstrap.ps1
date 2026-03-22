@@ -1,7 +1,9 @@
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$VenvPython = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
+$VenvDir = Join-Path $ProjectRoot ".venv"
+$VenvPython = Join-Path $VenvDir "Scripts\python.exe"
+$VenvConfig = Join-Path $VenvDir "pyvenv.cfg"
 $BootstrapTemp = Join-Path $ProjectRoot ".tmp-bootstrap"
 $DownloadsDir = Join-Path $ProjectRoot ".downloads"
 $CatalogPath = Join-Path $ProjectRoot "packages\ads_lab.json"
@@ -17,6 +19,54 @@ if (-not (Test-Path $DownloadsDir)) {
 $env:TMP = $BootstrapTemp
 $env:TEMP = $BootstrapTemp
 $progressPreference = "SilentlyContinue"
+
+function Get-VenvBaseExecutable {
+    if (-not (Test-Path $VenvConfig)) {
+        return $null
+    }
+
+    $executableLine = Get-Content $VenvConfig -ErrorAction SilentlyContinue |
+        Where-Object { $_ -like "executable = *" } |
+        Select-Object -First 1
+
+    if (-not $executableLine) {
+        return $null
+    }
+
+    return $executableLine.Substring("executable = ".Length).Trim()
+}
+
+function Test-VenvHealthy {
+    if (-not (Test-Path $VenvPython)) {
+        return $false
+    }
+
+    $baseExecutable = Get-VenvBaseExecutable
+    if ([string]::IsNullOrWhiteSpace($baseExecutable)) {
+        return $false
+    }
+
+    return Test-Path $baseExecutable
+}
+
+function Reset-StaleVenv {
+    if ((Test-Path $VenvDir) -and -not (Test-VenvHealthy)) {
+        Write-Host "[bootstrap] Venv atual referencia um Python-base indisponivel. Recriando ambiente..." -ForegroundColor Yellow
+
+        Start-Process -FilePath "cmd.exe" -ArgumentList @("/d", "/c", "rd /s /q `"$VenvDir`"") -Wait -NoNewWindow
+
+        if (Test-Path $VenvDir) {
+            try {
+                [System.IO.Directory]::Delete($VenvDir, $true)
+            } catch {
+            }
+        }
+
+        if (Test-Path $VenvDir) {
+            throw "Falha ao remover a venv antiga em $VenvDir"
+        }
+    }
+}
 
 function Test-WinGet {
     if (Get-Command winget -ErrorAction SilentlyContinue) {
@@ -157,8 +207,9 @@ function Ensure-BasePython {
 
 Ensure-WinGet
 $basePython = Ensure-BasePython
+Reset-StaleVenv
 
-if (-not (Test-Path $VenvPython)) {
+if (-not (Test-VenvHealthy)) {
     Write-Host "[bootstrap] Criando ambiente virtual em .venv..." -ForegroundColor Cyan
     & $basePython.Command @($basePython.Arguments + @("-m", "venv", ".venv"))
     if ($LASTEXITCODE -ne 0) {
