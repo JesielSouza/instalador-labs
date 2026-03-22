@@ -9,6 +9,10 @@ if (-not (Test-Path $MainScript)) {
     throw "Arquivo principal nao encontrado em $MainScript"
 }
 
+if (-not (Test-Path $BootstrapScript)) {
+    throw "Bootstrap nao encontrado em $BootstrapScript"
+}
+
 if (-not (Test-Path $VenvPython)) {
     Write-Host "[run] Ambiente virtual ausente. Executando bootstrap..." -ForegroundColor Yellow
     & $BootstrapScript
