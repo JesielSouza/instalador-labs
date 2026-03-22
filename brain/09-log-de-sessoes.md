@@ -102,3 +102,8 @@
 ## [Sessao 20] - Script de Verificacao Rapida (2026-03-21)
 * **Acoes**: Criacao de `verify.ps1` e `verify.bat` para validar a `.venv`, o perfil ADS e a suite automatizada antes de PR ou build.
 * **Validacao**: Execucao local de `verify.ps1` com sucesso, incluindo validacao do catalogo e 4 testes automatizados aprovados.
+
+## [Sessao 21] - Verificacao Rapida Automatizada em PR (2026-03-21)
+* **Acoes**: Criacao do workflow `verificacao-rapida.yml` no GitHub Actions para validar o perfil ADS e executar a suite automatizada em PRs.
+* **Decisao**: O workflow roda em `windows-latest` para manter compatibilidade com o uso de `winreg` e com o comportamento esperado do projeto.
+* **Resultado**: O repositorio passa a ter uma verifica??o t?cnica objetiva e barata antes do merge, al?m do coment?rio do Gemini.
