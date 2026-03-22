@@ -81,6 +81,14 @@ def process_package(package, logger, winget, direct_installer):
     package_name = package["software"]
     install_type = package["install_type"]
     winget_id = package.get("winget_id", "")
+    result = {
+        "package": package_name,
+        "install_type": install_type,
+        "winget_id": winget_id,
+        "status": "",
+        "install_method": "",
+        "detail": "",
+    }
 
     if install_type == "manual":
         logger.warning(
@@ -88,7 +96,10 @@ def process_package(package, logger, winget, direct_installer):
             status="manual",
             package_name=package_name,
         )
-        return "manual"
+        result["status"] = "manual"
+        result["install_method"] = "manual"
+        result["detail"] = "Requer intervencao manual."
+        return result
 
     if install_type == "winget_pending":
         logger.warning(
@@ -96,31 +107,46 @@ def process_package(package, logger, winget, direct_installer):
             status="winget_pending",
             package_name=package_name,
         )
-        return "pending"
+        result["status"] = "pending"
+        result["install_method"] = "winget_pending"
+        result["detail"] = "Aguardando validacao manual do fluxo WinGet."
+        return result
 
     if not winget.is_installed():
         if direct_installer.is_package_present(package):
             logger.success(package_name, status="already_installed")
-            return "already_installed"
+            result["status"] = "already_installed"
+            result["install_method"] = "registry_detect"
+            result["detail"] = "Pacote detectado no host sem necessidade de instalacao."
+            return result
 
         if package.get("fallback_installer"):
             if direct_installer.install_package(package, logger):
                 logger.success(package_name, status="installed")
-                return "installed"
+                result["status"] = "installed"
+                result["install_method"] = "fallback_direct"
+                result["detail"] = "Instalado via instalador direto oficial."
+                return result
 
             logger.error(
                 f"Falha no fallback de instalacao de '{package_name}'.",
                 status="fallback_failed",
                 package_name=package_name,
             )
-            return "failed"
+            result["status"] = "failed"
+            result["install_method"] = "fallback_direct"
+            result["detail"] = "Falha na execucao do instalador direto oficial."
+            return result
 
         logger.warning(
             f"Pacote '{package_name}' nao pode ser automatizado nesta maquina porque o WinGet nao esta disponivel.",
             status="winget_unavailable",
             package_name=package_name,
         )
-        return "blocked"
+        result["status"] = "blocked"
+        result["install_method"] = "blocked_no_winget"
+        result["detail"] = "Sem WinGet acessivel e sem fallback direto configurado."
+        return result
 
     logger.info(
         f"Validando pacote '{package_name}' ({winget_id})...",
@@ -130,7 +156,10 @@ def process_package(package, logger, winget, direct_installer):
 
     if winget.check_package_status(winget_id):
         logger.success(package_name, status="already_installed")
-        return "already_installed"
+        result["status"] = "already_installed"
+        result["install_method"] = "winget_detect"
+        result["detail"] = "Pacote localizado pelo WinGet antes da instalacao."
+        return result
 
     logger.info(
         f"Iniciando instalacao automatizada de '{package_name}' ({winget_id}).",
@@ -140,14 +169,20 @@ def process_package(package, logger, winget, direct_installer):
 
     if winget.install_package(winget_id):
         logger.success(package_name, status="installed")
-        return "installed"
+        result["status"] = "installed"
+        result["install_method"] = "winget"
+        result["detail"] = "Instalado com sucesso pelo WinGet."
+        return result
 
     logger.error(
         f"Falha na instalacao automatizada de '{package_name}' ({winget_id}).",
         status="install_error",
         package_name=package_name,
     )
-    return "failed"
+    result["status"] = "failed"
+    result["install_method"] = "winget"
+    result["detail"] = "Falha na instalacao automatizada pelo WinGet."
+    return result
 
 
 def execute_package_plan(profile, logger, winget, direct_installer):
@@ -159,15 +194,18 @@ def execute_package_plan(profile, logger, winget, direct_installer):
             status="empty_catalog",
         )
         return {
-            "installed": 0,
-            "already_installed": 0,
-            "pending": 0,
-            "manual": 0,
-            "failed": 0,
-            "blocked": 0,
+            "summary": {
+                "installed": 0,
+                "already_installed": 0,
+                "pending": 0,
+                "manual": 0,
+                "failed": 0,
+                "blocked": 0,
+            },
+            "packages": [],
         }
 
-    results = {
+    summary = {
         "installed": 0,
         "already_installed": 0,
         "pending": 0,
@@ -175,47 +213,78 @@ def execute_package_plan(profile, logger, winget, direct_installer):
         "failed": 0,
         "blocked": 0,
     }
+    package_results = []
 
     for package in packages:
-        result = process_package(package, logger, winget, direct_installer)
-        if result in results:
-            results[result] += 1
+        package_result = process_package(package, logger, winget, direct_installer)
+        package_results.append(package_result)
+        status = package_result["status"]
+        if status in summary:
+            summary[status] += 1
 
     logger.info(
         "Execucao concluida: "
-        f"{results['installed']} instalado(s), "
-        f"{results['already_installed']} ja presente(s), "
-        f"{results['pending']} pendente(s), "
-        f"{results['manual']} manual(is), "
-        f"{results['failed']} falha(s), "
-        f"{results['blocked']} bloqueado(s).",
+        f"{summary['installed']} instalado(s), "
+        f"{summary['already_installed']} ja presente(s), "
+        f"{summary['pending']} pendente(s), "
+        f"{summary['manual']} manual(is), "
+        f"{summary['failed']} falha(s), "
+        f"{summary['blocked']} bloqueado(s).",
         status="execution_summary",
     )
-    return results
+    return {"summary": summary, "packages": package_results}
 
 
 def write_execution_report(profile, results, logger):
-    """Gera um relatorio CSV simples a partir do resumo da execucao."""
+    """Gera um relatorio CSV com resumo e rastreabilidade por pacote."""
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     report_path = REPORTS_DIR / f"execution_report_{timestamp}.csv"
+    summary = results["summary"]
+    package_results = results["packages"]
 
-    rows = [
+    summary_rows = [
         ("profile", profile.get("profile", "desconhecido")),
         ("description", profile.get("description", "")),
         ("total_packages", len(profile.get("packages", []))),
-        ("installed", results["installed"]),
-        ("already_installed", results["already_installed"]),
-        ("pending", results["pending"]),
-        ("manual", results["manual"]),
-        ("failed", results["failed"]),
-        ("blocked", results["blocked"]),
+        ("installed", summary["installed"]),
+        ("already_installed", summary["already_installed"]),
+        ("pending", summary["pending"]),
+        ("manual", summary["manual"]),
+        ("failed", summary["failed"]),
+        ("blocked", summary["blocked"]),
     ]
 
     with report_path.open("w", encoding="utf-8", newline="") as report_file:
         writer = csv.writer(report_file)
-        writer.writerow(["metric", "value"])
-        writer.writerows(rows)
+        writer.writerow(["section", "key", "value"])
+        for key, value in summary_rows:
+            writer.writerow(["summary", key, value])
+
+        writer.writerow([])
+        writer.writerow(
+            [
+                "packages",
+                "software",
+                "status",
+                "install_method",
+                "install_type",
+                "winget_id",
+                "detail",
+            ]
+        )
+        for package_result in package_results:
+            writer.writerow(
+                [
+                    "package",
+                    package_result["package"],
+                    package_result["status"],
+                    package_result["install_method"],
+                    package_result["install_type"],
+                    package_result["winget_id"],
+                    package_result["detail"],
+                ]
+            )
 
     logger.info(
         f"Relatorio CSV gerado em '{report_path}'.",
