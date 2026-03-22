@@ -2,12 +2,39 @@ $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BootstrapScript = Join-Path $ProjectRoot "bootstrap.ps1"
-$VenvPython = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
+$VenvDir = Join-Path $ProjectRoot ".venv"
+$VenvPython = Join-Path $VenvDir "Scripts\python.exe"
+$VenvConfig = Join-Path $VenvDir "pyvenv.cfg"
 $MainScript = Join-Path $ProjectRoot "main.py"
 
-if (-not (Test-Path $VenvPython)) {
+function Test-VenvHealthy {
+    if (-not (Test-Path $VenvPython) -or -not (Test-Path $VenvConfig)) {
+        return $false
+    }
+
+    $executableLine = Get-Content $VenvConfig -ErrorAction SilentlyContinue |
+        Where-Object { $_ -like "executable = *" } |
+        Select-Object -First 1
+
+    if (-not $executableLine) {
+        return $false
+    }
+
+    $baseExecutable = $executableLine.Substring("executable = ".Length).Trim()
+    if ([string]::IsNullOrWhiteSpace($baseExecutable)) {
+        return $false
+    }
+
+    return Test-Path $baseExecutable
+}
+
+if (-not (Test-VenvHealthy)) {
     Write-Host "[build] Ambiente virtual ausente. Executando bootstrap..." -ForegroundColor Yellow
     powershell -ExecutionPolicy Bypass -File $BootstrapScript
+}
+
+if (-not (Test-VenvHealthy)) {
+    throw "Falha ao preparar uma venv valida do projeto em $VenvPython"
 }
 
 Write-Host "[build] Instalando PyInstaller na venv..." -ForegroundColor Cyan
