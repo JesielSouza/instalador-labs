@@ -73,3 +73,28 @@
 * **Acoes**: Ajuste do `bootstrap.ps1` para tentar recuperar o WinGet com `Microsoft.WinGet.Client` e `Repair-WinGetPackageManager -AllUsers` antes de depender de Python.
 * **Acoes**: Adicao de fallback no bootstrap para instalar `Python 3.12` via WinGet e, em seguida, via instalador direto oficial se necessario.
 * **Validacao**: Em ambiente onde WinGet e Python ja estavam disponiveis, o bootstrap reconheceu ambos e seguiu corretamente para a etapa da `.venv`.
+
+## [Sessao 15] - Rastreabilidade do Metodo de Instalacao (2026-03-21)
+* **Acoes**: Evolucao de `main.py` para retornar resultado estruturado por pacote, preservando o resumo agregado da execucao.
+* **Acoes**: Reformatacao do CSV de saida para incluir secao de resumo e linhas detalhadas com `status`, `install_method`, `install_type`, `winget_id` e `detail`.
+* **Validacao**: Ensaio controlado com stubs confirmou a geracao do relatorio detalhado, incluindo `registry_detect`, `fallback_direct`, `winget_pending` e `manual`.
+
+## [Sessao 16] - Governanca de QA com Gemini (2026-03-21)
+* **Acoes**: Registro do fluxo oficial de desenvolvimento em branches, PR individual por entrega e proibicao de commit direto na `main`.
+* **Acoes**: Registro da governanca de merge condicionada ao workflow `qa-review.yml` com leitura obrigatoria do comentario do Gemini pelo Codex.
+* **Resultado**: O projeto passa a tratar o Gemini como gate automatizado de QA antes de qualquer merge conduzido pelo Codex.
+
+## [Sessao 17] - Endurecimento do QA e Validacao do EXE (2026-03-21)
+* **Acoes**: Endurecimento do `qa-review.yml` com permissoes explicitas, payload JSON seguro, validacao do secret `GEMINI_API_KEY` e falha explicita quando a resposta do Gemini for invalida.
+* **Acoes**: Criacao da branch `feat/qa-gemini-report-traceability` para seguir o novo fluxo de trabalho sem tocar diretamente na `main`.
+* **Validacao**: `build_exe.ps1` gerou o bundle em `dist\InstaladorLabs` e o `InstaladorLabs.exe` executou ate o erro esperado de privilegio administrativo, confirmando o smoke test do pacote.
+
+## [Sessao 18] - QA com Gemini Validado em PR Real (2026-03-21)
+* **Acoes**: Correcao incremental do `qa-review.yml` na `main` ate eliminar erro de YAML e falta de permissao para comentar no PR.
+* **Acoes**: Criacao e atualizacao de PR real na branch `test/gemini-qa-smoke` para disparar o Gemini via evento `synchronize`.
+* **Validacao**: O Gemini comentou com sucesso no PR, e o fluxo branch dedicada -> PR -> comentario automatizado -> merge foi validado na pratica.
+
+## [Sessao 19] - Memoria do Projeto Passa a Ser Versionada (2026-03-21)
+* **Acoes**: Revisao das regras do projeto para permitir o versionamento continuo da pasta `brain/` como memoria operacional oficial.
+* **Acoes**: Alinhamento do backlog, tarefa atual e decisoes tecnicas para refletir que a memoria agora acompanha o repositorio.
+* **Resultado**: O projeto passa a manter contexto tecnico e processual atualizado junto com o codigo, reduzindo divergencia entre estado local e remoto.

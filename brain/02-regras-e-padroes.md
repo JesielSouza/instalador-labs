@@ -1,23 +1,29 @@
-# ⚖️ Regras e Padrões do Projeto
+# Regras e Padroes do Projeto
 
-## 🛠️ Tecnologias Obrigatórias
-* [cite_start]**Linguagem:** Python 3.10+[cite: 7].
-* [cite_start]**Gerenciador de Pacotes:** WinGet (Windows Package Manager)[cite: 5, 7].
-* [cite_start]**Formato de Configuração:** JSON para o catálogo de softwares[cite: 7, 30].
-* [cite_start]**Documentação:** Obsidian como Single Source of Truth[cite: 22, 38].
+## Tecnologias Obrigatorias
+* **Linguagem:** Python 3.10+.
+* **Gerenciador de Pacotes:** WinGet (Windows Package Manager).
+* **Formato de Configuracao:** JSON para o catalogo de softwares.
+* **Documentacao:** Obsidian `brain/` como memoria operacional versionada no repositorio.
 
-## 🛡️ Segurança e Governança
-* [cite_start]**Permissões:** O script deve validar se possui privilégios de Administrador antes de iniciar[cite: 46].
-* [cite_start]**Idempotência:** O código deve ser capaz de rodar múltiplas vezes sem causar erros ou reinstalações desnecessárias[cite: 16, 17].
-* [cite_start]**Validação:** Nenhum software deve ser automatizado sem antes passar pelo status `winget_pending` para teste manual[cite: 33, 48].
+## Seguranca e Governanca
+* **Permissoes:** O script deve validar privilegios de Administrador antes de iniciar.
+* **Idempotencia:** O codigo deve poder rodar varias vezes sem reinstalacoes desnecessarias.
+* **Validacao:** Nenhum software deve sair de `winget_pending` para automacao sem validacao manual previa.
+* **Privacidade:** Logs, relatorios locais, artefatos temporarios e segredos nao devem ser enviados ao GitHub. A pasta `brain/` passa a ser versionada como memoria oficial do projeto.
 
-## 🚀 Fluxo de Trabalho e Deploy
-* **Trabalho por Fases**: O projeto evolui por Tasks definidas em `05-tarefa-atual.md`.
-* **Sincronização**: Ao finalizar uma Task com sucesso, o Codex DEVE realizar o `git commit` e `git push`.
-* **Privacidade Absoluta**: É PROIBIDO subir a pasta `brain/` ou arquivos `.env`/`logs` para o GitHub. 
-* **Higiene de Código**: Antes de cada push, validar a compilação e atualizar a memória no Obsidian.
+## Fluxo de Trabalho e Deploy
+* **Trabalho por Fases:** O projeto evolui por Tasks definidas em `brain/05-tarefa-atual.md`.
+* **Branches Obrigatorias:** Todo desenvolvimento acontece em branch dedicada; nunca commitar diretamente na `main`.
+* **PR por Entrega:** Cada feature ou correcao deve gerar um Pull Request individual.
+* **QA Automatizado:** Ao abrir ou atualizar um PR, o workflow `qa-review.yml` deve disparar automaticamente para analise do Gemini sobre o diff.
+* **Leitura Obrigatoria do QA:** O Codex deve ler o comentario do Gemini antes de qualquer decisao tecnica, resposta no PR ou merge.
+* **Merge Condicional:** O Codex pode fazer merge automatico apenas quando o Gemini classificar o PR como aprovado e sem erros criticos.
+* **Bloqueios de Merge:** O Codex deve bloquear o merge e notificar o humano se o Gemini identificar erro de logica, ausencia de tratamento de erro, risco de falha em producao ou comportamento indefinido em cenarios de excecao.
+* **Integracao na Main:** Ao finalizar uma Task com sucesso, o fluxo correto e commitar na branch, publicar a branch, abrir PR e integrar na `main` somente apos o QA.
+* **Higiene de Codigo:** Antes de cada push, validar o comportamento da mudanca e atualizar a memoria versionada em `brain/`.
 
-## 📊 Observabilidade (Logs)
-* [cite_start]**Localização:** Todos os logs devem ser salvos na pasta `/logs`[cite: 29].
-* [cite_start]**Conteúdo:** Cada entrada de log deve conter: Timestamp, Nome da Máquina, Usuário e Status do Pacote[cite: 32, 37].
-* [cite_start]**Persistência:** Erros críticos devem ser detalhados para facilitar o troubleshooting remoto[cite: 37, 45].
+## Observabilidade
+* **Localizacao:** Logs devem ser salvos em `logs/` e relatorios em `reports/`.
+* **Conteudo:** Cada entrada de log deve conter timestamp, maquina, usuario, status e pacote.
+* **Persistencia:** Erros criticos devem ser detalhados para facilitar troubleshooting remoto.

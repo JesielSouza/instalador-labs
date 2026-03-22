@@ -94,3 +94,22 @@
 * **Contexto**: Em distribuicao real, a maquina pode nao ter Python instalado, o que inviabiliza depender do runtime Python para preparar o proprio ambiente.
 * **Decisao**: O `bootstrap.ps1` deve tentar restaurar o WinGet primeiro com `Install-Module Microsoft.WinGet.Client` e `Repair-WinGetPackageManager -AllUsers`; depois resolver/instalar Python 3.12; e so entao criar a `.venv` e instalar dependencias do projeto.
 * **Status**: Implementado.
+
+## [ADR-020] - Integracao de QA por GitHub Actions com Gemini
+* **Contexto**: O repositorio passa a operar com desenvolvimento em branches dedicadas, PR individual por entrega e revisao automatizada antes do merge.
+* **Decisao**: Adotar o workflow `qa-review.yml` no GitHub Actions para disparar revisao automatica do Gemini sempre que um PR for aberto ou atualizado.
+* **Decisao**: O Codex deve ler o comentario do Gemini antes de qualquer decisao sobre merge, follow-up tecnico ou resposta no PR.
+* **Decisao**: Merge automatico so e permitido quando o Gemini aprovar o PR sem erros criticos; em caso de erro de logica, ausencia de tratamento de erro, risco de falha em producao ou comportamento indefinido em cenarios de excecao, o merge deve ser bloqueado e escalado ao humano.
+* **Status**: Aprovado para adocao operacional.
+
+## [ADR-021] - QA com Gemini validado em PR real
+* **Contexto**: Depois de registrar a governanca de PR e corrigir problemas de YAML e permissao no `qa-review.yml`, o fluxo precisava ser exercitado de ponta a ponta em um caso real.
+* **Decisao**: Considerar o gate de QA com Gemini operacionalmente validado apenas apos um PR real em branch dedicada receber comentario automatizado com sucesso e seguir ate merge.
+* **Decisao**: A partir desta validacao, o proximo foco deixa de ser a infraestrutura de PR e volta para melhorias do produto e reducao de ruido operacional no runtime.
+* **Status**: Validado em campo.
+
+## [ADR-022] - Versionamento da memoria operacional em `brain/`
+* **Contexto**: As iteracoes recentes do produto e do fluxo de PR passaram a depender fortemente das anotacoes em `brain/`, e manter isso apenas local gerava defasagem entre estado real e memoria do projeto.
+* **Decisao**: A pasta `brain/` passa a ser versionada no repositorio como memoria operacional oficial, devendo ser atualizada junto com mudancas relevantes de produto, QA e runtime.
+* **Decisao**: Apenas artefatos temporarios, logs, relatorios locais e segredos continuam fora do versionamento.
+* **Status**: Aprovado para adocao imediata.
