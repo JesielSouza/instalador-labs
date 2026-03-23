@@ -210,6 +210,7 @@ class WinGetManager:
         return {
             **result,
             "detail": detail,
+            "diagnostics": self._build_diagnostics(result),
         }
 
     def upgrade_package(self, package_id: str) -> bool:
@@ -235,6 +236,7 @@ class WinGetManager:
         return {
             **result,
             "detail": detail,
+            "diagnostics": self._build_diagnostics(result),
         }
 
     def uninstall_package(self, package_id: str) -> bool:
@@ -259,6 +261,7 @@ class WinGetManager:
         return {
             **result,
             "detail": detail,
+            "diagnostics": self._build_diagnostics(result),
         }
 
     def _build_package_command_args(
@@ -498,6 +501,28 @@ class WinGetManager:
             + (f" (codigo {result['returncode']})" if result["returncode"] is not None else "")
             + f": {message}"
         )
+
+    @staticmethod
+    def _build_diagnostics(result: dict) -> str:
+        command = " ".join(str(part) for part in result.get("command", []))
+        stdout = " ".join((result.get("stdout") or "").split())
+        stderr = " ".join((result.get("stderr") or "").split())
+
+        if len(stdout) > 320:
+            stdout = stdout[:317] + "..."
+        if len(stderr) > 320:
+            stderr = stderr[:317] + "..."
+
+        sections = []
+        if command:
+            sections.append(f"comando={command}")
+        if result.get("returncode") is not None:
+            sections.append(f"codigo={result['returncode']}")
+        if stdout:
+            sections.append(f"stdout={stdout}")
+        if stderr:
+            sections.append(f"stderr={stderr}")
+        return " | ".join(sections) if sections else "Sem diagnostico bruto do WinGet."
 
     @staticmethod
     def _read_windows_registry_value(value_name: str) -> str | None:
