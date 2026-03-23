@@ -193,6 +193,23 @@ class WinGetManagerCommandTests(unittest.TestCase):
         self.assertTrue(result["healthy"])
         self.assertEqual(result["action"], "refreshed_client")
 
+    def test_install_details_include_raw_diagnostics_for_failed_winget_command(self):
+        with patch("subprocess.run") as run_mock:
+            run_mock.side_effect = subprocess.CalledProcessError(
+                returncode=1978335212,
+                cmd=[],
+                output="Installer failed in phase download.",
+                stderr="The installer hash does not match.",
+            )
+
+            result = self.manager.install_package_details("Microsoft.VisualStudioCode")
+
+        self.assertFalse(result["success"])
+        self.assertIn("comando=", result["diagnostics"])
+        self.assertIn("codigo=1978335212", result["diagnostics"])
+        self.assertIn("stdout=Installer failed in phase download.", result["diagnostics"])
+        self.assertIn("stderr=The installer hash does not match.", result["diagnostics"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -732,6 +732,14 @@ def _is_retryable_winget_install_failure(install_result: dict) -> bool:
     )
 
 
+def _build_winget_failure_diagnostics(install_result: dict) -> str:
+    """Extrai uma trilha diagnostica objetiva do WinGet para comparar hosts."""
+    diagnostics = (install_result.get("diagnostics") or "").strip()
+    if diagnostics:
+        return diagnostics
+    return install_result.get("detail", "Sem diagnostico adicional do WinGet.")
+
+
 def _upgrade_winget_package(winget, package_id: str) -> dict:
     """Executa a atualizacao via WinGet com diagnostico detalhado quando disponivel."""
     if hasattr(winget, "upgrade_package_details"):
@@ -895,6 +903,12 @@ def process_package(package, logger, winget, direct_installer, operation: str = 
             return result
 
         if package.get("fallback_installer") and _is_retryable_winget_install_failure(install_result):
+            winget_failure_diagnostics = _build_winget_failure_diagnostics(install_result)
+            logger.warning(
+                f"Falha no WinGet para '{package_name}'. Diagnostico: {winget_failure_diagnostics}",
+                status="winget_failure_diagnostics",
+                package_name=package_name,
+            )
             logger.warning(
                 f"Falha no WinGet para '{package_name}'. Tentando fallback direto oficial.",
                 status="fallback_retry",
@@ -904,14 +918,20 @@ def process_package(package, logger, winget, direct_installer, operation: str = 
                 logger.success(package_name, status="already_installed")
                 result["status"] = "already_installed"
                 result["install_method"] = "registry_detect"
-                result["detail"] = "Pacote detectado no host apos falha do WinGet, sem necessidade de fallback."
+                result["detail"] = (
+                    "Pacote detectado no host apos falha do WinGet, sem necessidade de fallback. "
+                    f"Diagnostico do WinGet: {winget_failure_diagnostics}"
+                )
                 return result
 
             if direct_installer.install_package(package, logger):
                 logger.success(package_name, status="installed")
                 result["status"] = "installed"
                 result["install_method"] = "fallback_direct_after_winget"
-                result["detail"] = "Instalado via fallback direto oficial apos falha recuperavel do WinGet."
+                result["detail"] = (
+                    "Instalado via fallback direto oficial apos falha recuperavel do WinGet. "
+                    f"Diagnostico do WinGet: {winget_failure_diagnostics}"
+                )
                 return result
 
             logger.error(
@@ -922,7 +942,8 @@ def process_package(package, logger, winget, direct_installer, operation: str = 
             result["status"] = "failed"
             result["install_method"] = "fallback_direct_after_winget"
             result["detail"] = (
-                "O WinGet falhou e o fallback direto oficial tambem nao concluiu a instalacao."
+                "O WinGet falhou e o fallback direto oficial tambem nao concluiu a instalacao. "
+                f"Diagnostico do WinGet: {winget_failure_diagnostics}"
             )
             return result
 
