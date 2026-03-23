@@ -4,7 +4,7 @@ import urllib.request
 import winreg
 from pathlib import Path
 
-from config import DOWNLOADS_DIR
+from config import DOWNLOADS_DIR, LOGS_DIR
 
 
 class DirectInstallerManager:
@@ -93,8 +93,11 @@ class DirectInstallerManager:
             subprocess.run(command, check=True, capture_output=True, text=True)
             return True
         except subprocess.CalledProcessError as error:
+            msi_log_hint = self._extract_msi_log_hint(command)
             logger.error(
-                f"Falha no fallback direto de '{package['software']}': {error.stderr.strip() or error.stdout.strip() or error}",
+                f"Falha no fallback direto de '{package['software']}': "
+                f"{error.stderr.strip() or error.stdout.strip() or error}"
+                + (f" | Log MSI: {msi_log_hint}" if msi_log_hint else ""),
                 status="fallback_install_error",
                 package_name=package["software"],
             )
@@ -116,7 +119,17 @@ class DirectInstallerManager:
     @staticmethod
     def _build_install_command(installer_path: Path, install_args: list[str]) -> list[str]:
         if installer_path.suffix.lower() == ".msi":
-            return ["msiexec.exe", "/i", str(installer_path), *install_args]
+            msi_log_dir = LOGS_DIR
+            msi_log_dir.mkdir(parents=True, exist_ok=True)
+            msi_log_path = msi_log_dir / f"{installer_path.stem}_msi.log"
+            return [
+                "msiexec.exe",
+                "/i",
+                str(installer_path),
+                "/L*V",
+                str(msi_log_path),
+                *install_args,
+            ]
         return [str(installer_path), *install_args]
 
     def _ensure_valid_installer_file(self, installer_path: Path) -> None:
@@ -138,3 +151,12 @@ class DirectInstallerManager:
         if suffix == ".msi":
             return header.startswith(self._MSI_SIGNATURE)
         return bool(header)
+
+    @staticmethod
+    def _extract_msi_log_hint(command: list[str]) -> str:
+        if len(command) < 5 or str(command[0]).lower() != "msiexec.exe":
+            return ""
+        for index, part in enumerate(command):
+            if str(part).upper() == "/L*V" and index + 1 < len(command):
+                return str(command[index + 1])
+        return ""

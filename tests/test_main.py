@@ -4,6 +4,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+
+if "colorama" not in sys.modules:
+    sys.modules["colorama"] = SimpleNamespace(
+        Fore=SimpleNamespace(GREEN="", YELLOW="", RED="", CYAN=""),
+        Style=SimpleNamespace(RESET_ALL=""),
+        init=lambda autoreset=True: None,
+    )
 
 import main
 
@@ -45,6 +53,8 @@ class FakeWinget:
         self.install_failure_detail = install_failure_detail or "Falha na instalacao automatizada pelo WinGet."
         self.upgrade_failure_detail = upgrade_failure_detail or "Falha na atualizacao automatizada pelo WinGet."
         self.uninstall_failure_detail = uninstall_failure_detail or "Falha na desinstalacao automatizada pelo WinGet."
+        self.systemic_install_failure = False
+        self.systemic_install_failure_diagnostics = ""
 
     def is_installed(self):
         return self.installed
@@ -64,9 +74,15 @@ class FakeWinget:
 
     def install_package_details(self, package_id):
         success = package_id in self.install_success_ids
+        if not success and "2316632079" in self.install_failure_detail:
+            self.systemic_install_failure = True
+            self.systemic_install_failure_diagnostics = (
+                f"comando=winget install --id {package_id} | codigo=2316632079"
+            )
         return {
             "success": success,
             "detail": "Instalado com sucesso pelo WinGet." if success else self.install_failure_detail,
+            "diagnostics": self.systemic_install_failure_diagnostics if not success else "",
         }
 
     def upgrade_package(self, package_id):
@@ -88,6 +104,12 @@ class FakeWinget:
             "success": success,
             "detail": "Desinstalado com sucesso pelo WinGet." if success else self.uninstall_failure_detail,
         }
+
+    def has_systemic_install_failure(self):
+        return self.systemic_install_failure
+
+    def get_systemic_install_failure_diagnostics(self):
+        return self.systemic_install_failure_diagnostics
 
 
 class FakeDirectInstaller:
@@ -292,6 +314,43 @@ class ExecutePackagePlanTests(unittest.TestCase):
 
         self.assertEqual(results["summary"]["installed"], 1)
         self.assertEqual(results["packages"][0]["install_method"], "fallback_direct_after_winget")
+
+    def test_execute_package_plan_bypasses_future_winget_installs_after_systemic_failure(self):
+        profile = {
+            "profile": "teste",
+            "description": "falha sistemica do winget na mesma execucao",
+            "packages": [
+                {
+                    "software": "Figma",
+                    "install_type": "winget",
+                    "winget_id": "Figma.Figma",
+                    "fallback_installer": {"download_url": "https://example.invalid/figma.exe", "install_args": ["/S"]},
+                    "notes": "Primeiro pacote dispara falha sistemica do winget.",
+                },
+                {
+                    "software": "XAMPP",
+                    "install_type": "winget",
+                    "winget_id": "ApacheFriends.Xampp.8.2",
+                    "fallback_installer": {"download_url": "https://example.invalid/xampp.exe", "install_args": ["--mode", "unattended"]},
+                    "notes": "Segundo pacote deve pular o winget e ir direto ao fallback.",
+                },
+            ],
+        }
+        logger = FakeLogger()
+        winget = FakeWinget(
+            installed=True,
+            install_failure_detail="Falha na instalacao do pacote (codigo 2316632079): Sources do WinGet foram resetadas e atualizadas, mas a operacao ainda falhou.",
+        )
+        direct_installer = FakeDirectInstaller(install_success_names={"Figma", "XAMPP"})
+
+        results = main.execute_package_plan(profile, logger, winget, direct_installer, operation="install")
+
+        self.assertEqual(results["summary"]["installed"], 2)
+        self.assertEqual(results["packages"][0]["install_method"], "fallback_direct_after_winget")
+        self.assertEqual(
+            results["packages"][1]["install_method"],
+            "fallback_direct_after_systemic_winget_failure",
+        )
 
     def test_execute_package_plan_supports_update_operation(self):
         profile = {

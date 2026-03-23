@@ -16,6 +16,8 @@ class WinGetManager:
     def __init__(self):
         self.executable = shutil.which("winget") or resolve_winget_executable()
         self.default_source = "winget"
+        self.systemic_install_failure = False
+        self.systemic_install_failure_diagnostics = ""
         self.source_repair_error_markers = (
             "failed when opening source",
             "source reset",
@@ -213,6 +215,13 @@ class WinGetManager:
             "diagnostics": self._build_diagnostics(result),
         }
 
+    def has_systemic_install_failure(self) -> bool:
+        """Indica se o host ja exibiu falha sistemica do WinGet em instalacoes desta sessao."""
+        return self.systemic_install_failure
+
+    def get_systemic_install_failure_diagnostics(self) -> str:
+        return self.systemic_install_failure_diagnostics
+
     def upgrade_package(self, package_id: str) -> bool:
         """Executa a atualizacao silenciosa de um pacote."""
         return self.upgrade_package_details(package_id)["success"]
@@ -334,7 +343,7 @@ class WinGetManager:
             return retried_result
 
         retry_detail = self._summarize_result(retried_result, repair_label)
-        return {
+        failed_result = {
             **retried_result,
             "stderr": (
                 f"{retried_result['stderr']} | Sources do WinGet foram resetadas e atualizadas, "
@@ -347,6 +356,9 @@ class WinGetManager:
             "client_repair_result": client_repair_result,
             "repair_result": repair_result,
         }
+        if args and args[0] == "install":
+            self._record_systemic_install_failure(failed_result)
+        return failed_result
 
     def repair_client_package(self) -> dict:
         command = [
@@ -430,6 +442,10 @@ class WinGetManager:
     def _run_winget_command(self, args: list[str]) -> dict:
         command = [self.executable, *args]
         return self._run_system_command(command)
+
+    def _record_systemic_install_failure(self, result: dict) -> None:
+        self.systemic_install_failure = True
+        self.systemic_install_failure_diagnostics = self._build_diagnostics(result)
 
     def _run_system_command(self, command: list[str]) -> dict:
         try:
