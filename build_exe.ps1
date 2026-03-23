@@ -69,6 +69,18 @@ function Resolve-PublishBundlePath {
     }
 }
 
+function Publish-BundleRobustly([string]$SourcePath, [string]$DestinationPath) {
+    try {
+        Move-Item -Path $SourcePath -Destination $DestinationPath
+        return
+    } catch {
+        Write-Host "[build] Move-Item falhou ao publicar o bundle. Tentando copia robusta..." -ForegroundColor Yellow
+    }
+
+    Copy-Item -Path $SourcePath -Destination $DestinationPath -Recurse -Force
+    Remove-DirectoryRobustly $SourcePath
+}
+
 if (-not (Test-VenvHealthy)) {
     Write-Host "[build] Ambiente virtual ausente. Executando bootstrap..." -ForegroundColor Yellow
     powershell -ExecutionPolicy Bypass -File $BootstrapScript
@@ -112,7 +124,7 @@ if (-not (Test-Path $FinalDistRoot)) {
 }
 
 $PublishBundle = Resolve-PublishBundlePath
-Move-Item -Path $TempBundle -Destination $PublishBundle
+Publish-BundleRobustly -SourcePath $TempBundle -DestinationPath $PublishBundle
 Remove-DirectoryRobustly $TempDistRoot
 Remove-DirectoryRobustly $TempBuildRoot
 
