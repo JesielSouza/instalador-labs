@@ -22,13 +22,6 @@ class WinGetManager:
             "0x8a15000f",
             "2316632079",
         )
-        self.client_repair_error_markers = (
-            "desktopappinstaller",
-            "app installer",
-            "microsoft.appinstaller",
-            "microsoft.desktopappinstaller",
-        )
-
     def is_installed(self) -> bool:
         """Verifica se o WinGet esta acessivel no sistema."""
         return self.executable is not None
