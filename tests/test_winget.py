@@ -119,7 +119,6 @@ class WinGetManagerCommandTests(unittest.TestCase):
                 "source",
                 "reset",
                 "--force",
-                "--accept-source-agreements",
                 "--disable-interactivity",
             ],
         )
@@ -129,7 +128,6 @@ class WinGetManagerCommandTests(unittest.TestCase):
                 "winget",
                 "source",
                 "update",
-                "--accept-source-agreements",
                 "--disable-interactivity",
             ],
         )

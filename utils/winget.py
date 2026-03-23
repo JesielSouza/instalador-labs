@@ -257,7 +257,6 @@ class WinGetManager:
                 "source",
                 "reset",
                 "--force",
-                "--accept-source-agreements",
                 "--disable-interactivity",
             ]
         )
@@ -268,7 +267,6 @@ class WinGetManager:
             [
                 "source",
                 "update",
-                "--accept-source-agreements",
                 "--disable-interactivity",
             ]
         )
@@ -285,8 +283,8 @@ class WinGetManager:
                 "stdout": combined_stdout,
                 "stderr": combined_stderr,
                 "command": [
-                    [self.executable, "source", "reset", "--force", "--accept-source-agreements", "--disable-interactivity"],
-                    [self.executable, "source", "update", "--accept-source-agreements", "--disable-interactivity"],
+                    [self.executable, "source", "reset", "--force", "--disable-interactivity"],
+                    [self.executable, "source", "update", "--disable-interactivity"],
                 ],
             }
         return update_result
