@@ -10,6 +10,8 @@ from config import DOWNLOADS_DIR
 class DirectInstallerManager:
     """Gerencia fallback por instalador direto e downloads oficiais catalogados."""
 
+    _MSI_SIGNATURE = bytes.fromhex("D0CF11E0A1B11AE1")
+
     def is_package_present(self, package: dict) -> bool:
         detect_names = package.get("detect_names", [])
         if not detect_names:
@@ -52,12 +54,15 @@ class DirectInstallerManager:
         target_path = target_dir / file_name
 
         if target_path.exists():
-            logger.info(
-                f"Instalador em cache reutilizado para '{package['software']}'.",
-                status="fallback_cached" if config_key == "fallback_installer" else "manual_download_cached",
-                package_name=package["software"],
-            )
-            return target_path
+            if self._looks_like_valid_installer(target_path):
+                logger.info(
+                    f"Instalador em cache reutilizado para '{package['software']}'.",
+                    status="fallback_cached" if config_key == "fallback_installer" else "manual_download_cached",
+                    package_name=package["software"],
+                )
+                return target_path
+
+            target_path.unlink(missing_ok=True)
 
         logger.info(
             f"Baixando instalador oficial de '{package['software']}'...",
@@ -65,6 +70,7 @@ class DirectInstallerManager:
             package_name=package["software"],
         )
         urllib.request.urlretrieve(download_url, target_path)
+        self._ensure_valid_installer_file(target_path)
         return target_path
 
     def download_manual_installer(self, package: dict, logger) -> Path:
@@ -93,6 +99,13 @@ class DirectInstallerManager:
                 package_name=package["software"],
             )
             return False
+        except OSError as error:
+            logger.error(
+                f"Falha no fallback direto de '{package['software']}': {error}",
+                status="fallback_install_error",
+                package_name=package["software"],
+            )
+            return False
 
     @staticmethod
     def _infer_file_name(download_url: str) -> str:
@@ -105,3 +118,23 @@ class DirectInstallerManager:
         if installer_path.suffix.lower() == ".msi":
             return ["msiexec.exe", "/i", str(installer_path), *install_args]
         return [str(installer_path), *install_args]
+
+    def _ensure_valid_installer_file(self, installer_path: Path) -> None:
+        if not self._looks_like_valid_installer(installer_path):
+            raise ValueError(
+                f"Arquivo baixado em '{installer_path.name}' nao parece ser um instalador Windows valido."
+            )
+
+    def _looks_like_valid_installer(self, installer_path: Path) -> bool:
+        try:
+            with installer_path.open("rb") as installer_file:
+                header = installer_file.read(8)
+        except OSError:
+            return False
+
+        suffix = installer_path.suffix.lower()
+        if suffix == ".exe":
+            return header.startswith(b"MZ")
+        if suffix == ".msi":
+            return header.startswith(self._MSI_SIGNATURE)
+        return bool(header)
