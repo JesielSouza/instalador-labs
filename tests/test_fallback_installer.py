@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import utils.fallback_installer as fallback_installer_module
 from utils.fallback_installer import DirectInstallerManager
 
 
@@ -29,8 +30,26 @@ class DirectInstallerManagerTests(unittest.TestCase):
         }
 
     def test_build_install_command_uses_msiexec_for_msi(self):
-        command = self.manager._build_install_command(Path(r"C:\tmp\mysql.msi"), ["/qn"])
-        self.assertEqual(command, ["msiexec.exe", "/i", r"C:\tmp\mysql.msi", "/qn"])
+        temp_dir = Path(".tmp-test-msi-logs")
+        temp_dir.mkdir(exist_ok=True)
+        try:
+            with patch.object(fallback_installer_module, "LOGS_DIR", temp_dir):
+                command = self.manager._build_install_command(Path(r"C:\tmp\mysql.msi"), ["/qn"])
+            self.assertEqual(
+                command,
+                [
+                    "msiexec.exe",
+                    "/i",
+                    r"C:\tmp\mysql.msi",
+                    "/L*V",
+                    str(temp_dir / "mysql_msi.log"),
+                    "/qn",
+                ],
+            )
+        finally:
+            for child in temp_dir.glob("*"):
+                child.unlink(missing_ok=True)
+            temp_dir.rmdir()
 
     def test_download_installer_rejects_invalid_executable_payload(self):
         logger = FakeLogger()
@@ -63,6 +82,12 @@ class DirectInstallerManagerTests(unittest.TestCase):
 
         self.assertFalse(result)
         self.assertTrue(any(item[0] == "error" for item in logger.messages))
+
+    def test_extract_msi_log_hint_returns_log_path(self):
+        hint = self.manager._extract_msi_log_hint(
+            ["msiexec.exe", "/i", r"C:\tmp\mysql.msi", "/L*V", r"C:\logs\mysql_msi.log", "/qn"]
+        )
+        self.assertEqual(hint, r"C:\logs\mysql_msi.log")
 
 
 if __name__ == "__main__":

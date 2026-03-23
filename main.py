@@ -740,6 +740,16 @@ def _build_winget_failure_diagnostics(install_result: dict) -> str:
     return install_result.get("detail", "Sem diagnostico adicional do WinGet.")
 
 
+def _can_bypass_winget_install(winget) -> bool:
+    return hasattr(winget, "has_systemic_install_failure") and winget.has_systemic_install_failure()
+
+
+def _get_systemic_winget_failure_diagnostics(winget) -> str:
+    if hasattr(winget, "get_systemic_install_failure_diagnostics"):
+        return winget.get_systemic_install_failure_diagnostics() or "Sem diagnostico adicional do WinGet."
+    return "Sem diagnostico adicional do WinGet."
+
+
 def _upgrade_winget_package(winget, package_id: str) -> dict:
     """Executa a atualizacao via WinGet com diagnostico detalhado quando disponivel."""
     if hasattr(winget, "upgrade_package_details"):
@@ -873,6 +883,47 @@ def process_package(package, logger, winget, direct_installer, operation: str = 
             result["status"] = "blocked"
             result["install_method"] = "blocked_no_winget"
             result["detail"] = "Sem WinGet acessivel e sem fallback direto configurado."
+            return result
+
+        if package.get("fallback_installer") and _can_bypass_winget_install(winget):
+            winget_failure_diagnostics = _get_systemic_winget_failure_diagnostics(winget)
+            logger.warning(
+                f"Falha sistemica anterior do WinGet detectada nesta execucao. Pulando WinGet para '{package_name}'. "
+                f"Diagnostico: {winget_failure_diagnostics}",
+                status="winget_bypassed",
+                package_name=package_name,
+            )
+            if direct_installer.is_package_present(package):
+                logger.success(package_name, status="already_installed")
+                result["status"] = "already_installed"
+                result["install_method"] = "registry_detect"
+                result["detail"] = (
+                    "Pacote detectado no host apos falha sistemica anterior do WinGet. "
+                    f"Diagnostico do WinGet: {winget_failure_diagnostics}"
+                )
+                return result
+
+            if direct_installer.install_package(package, logger):
+                logger.success(package_name, status="installed")
+                result["status"] = "installed"
+                result["install_method"] = "fallback_direct_after_systemic_winget_failure"
+                result["detail"] = (
+                    "Instalado via fallback direto oficial apos falha sistemica anterior do WinGet nesta maquina. "
+                    f"Diagnostico do WinGet: {winget_failure_diagnostics}"
+                )
+                return result
+
+            logger.error(
+                f"Falha no fallback de instalacao de '{package_name}' apos bypass do WinGet.",
+                status="fallback_failed",
+                package_name=package_name,
+            )
+            result["status"] = "failed"
+            result["install_method"] = "fallback_direct_after_systemic_winget_failure"
+            result["detail"] = (
+                "O WinGet foi pulado por falha sistemica anterior e o fallback direto oficial nao concluiu a instalacao. "
+                f"Diagnostico do WinGet: {winget_failure_diagnostics}"
+            )
             return result
 
         logger.info(
