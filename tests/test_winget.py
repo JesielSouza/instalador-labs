@@ -61,6 +61,7 @@ class WinGetManagerCommandTests(unittest.TestCase):
                 "--silent",
                 "--accept-package-agreements",
                 "--accept-source-agreements",
+                "--disable-interactivity",
             ],
         )
         self.assertTrue(result["success"])
@@ -89,9 +90,53 @@ class WinGetManagerCommandTests(unittest.TestCase):
                 "winget",
                 "--silent",
                 "--accept-source-agreements",
+                "--disable-interactivity",
             ],
         )
         self.assertTrue(result["success"])
+
+    def test_install_repairs_sources_and_retries_when_winget_cannot_open_sources(self):
+        with patch("subprocess.run") as run_mock:
+            run_mock.side_effect = [
+                subprocess.CalledProcessError(
+                    returncode=2316632079,
+                    cmd=[],
+                    output="",
+                    stderr="Failed when opening source(s); try the 'source reset' command.",
+                ),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="Sources reset.", stderr=""),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="Sources updated.", stderr=""),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+            ]
+
+            result = self.manager.install_package_details("Microsoft.VisualStudioCode")
+
+        commands = [call.args[0] for call in run_mock.call_args_list]
+        self.assertEqual(
+            commands[1],
+            [
+                "winget",
+                "source",
+                "reset",
+                "--force",
+                "--accept-source-agreements",
+                "--disable-interactivity",
+            ],
+        )
+        self.assertEqual(
+            commands[2],
+            [
+                "winget",
+                "source",
+                "update",
+                "--accept-source-agreements",
+                "--disable-interactivity",
+            ],
+        )
+        self.assertEqual(commands[3], commands[0])
+        self.assertTrue(result["success"])
+        self.assertTrue(result["repair_attempted"])
+        self.assertTrue(result["repair_succeeded"])
 
 
 if __name__ == "__main__":
