@@ -150,3 +150,16 @@
 * **Acoes**: Criacao de `README.md` com orientacao de download do executavel pela aba `Releases` e uso do bundle Windows em ambiente real.
 * **Acoes**: Criacao do workflow `publicar-exe.yml` para gerar o bundle, compactar o conteudo de `dist\InstaladorLabs` e publicar a release no GitHub.
 * **Resultado**: O projeto passa a ter caminho claro para disponibilizacao publica do artefato funcional sem versionar `dist/` no reposit?rio.
+
+## [Sessao 29] - Correcao do Prompt da Microsoft Store no WinGet (2026-03-23)
+* **Acoes**: Reproducao do bloqueio interativo da `msstore` durante instalacao automatizada de `Visual Studio Code` em execucao real do `InstaladorLabs.exe`.
+* **Acoes**: Evolucao de `utils/winget.py` para fixar `--source winget` e `--exact` nas operacoes por `--id`, com adicao de testes dedicados em `tests/test_winget.py`.
+* **Acoes**: Abertura, revisao manual e merge da PR `#13`, com validacao objetiva nos checks e validacao pratica do fluxo corrigido em maquina real.
+* **Validacao**: O instalador concluiu o plano com `3 installed`, `2 already_installed`, `0 pending`, `1 manual`, `0 failed`, `0 blocked`, gerando `dist\InstaladorLabs\reports\execution_report_20260323_134541.csv`.
+
+## [Sessao 30] - Endurecimento do Build e Release v0.1.1 (2026-03-23)
+* **Acoes**: Evolucao de `build_exe.ps1` para preservar sempre `dist\InstaladorLabs` como bundle final, usar sincronizacao robusta ao publicar o artefato e instruir o operador quando houver arquivos em uso.
+* **Acoes**: Abertura, revisao e merge da PR `#14`, incluindo ajuste apos finding sobre compatibilidade com o workflow `publicar-exe.yml`.
+* **Acoes**: Criacao e push da tag `v0.1.1`, com publicacao automatica da release `InstaladorLabs-v0.1.1-win64.zip` no GitHub.
+* **Aprendizados do ambiente**: O build local pode falhar ao sobrescrever `dist\InstaladorLabs` se o proprio `InstaladorLabs.exe` ou logs do bundle estiverem abertos; nesses casos o script agora orienta explicitamente o operador sobre como liberar o diretório.
+* **Resultado**: Usuarios passam a ter uma release publica contendo a correcao do prompt da `msstore` e o endurecimento do processo de publicacao do `.exe`.
