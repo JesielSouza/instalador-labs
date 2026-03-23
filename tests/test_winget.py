@@ -125,12 +125,7 @@ class WinGetManagerCommandTests(unittest.TestCase):
                 "powershell.exe",
                 "-NoProfile",
                 "-Command",
-                (
-                    "$pkg = Get-AppxPackage Microsoft.DesktopAppInstaller -AllUsers; "
-                    "if (-not $pkg) { throw 'Microsoft.DesktopAppInstaller nao encontrado.' } "
-                    "Add-AppxPackage -DisableDevelopmentMode -Register "
-                    "($pkg.InstallLocation + '\\AppxManifest.xml')"
-                ),
+                "Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe",
             ],
         )
         self.assertEqual(commands[2][1:], commands[0][1:])
@@ -146,6 +141,57 @@ class WinGetManagerCommandTests(unittest.TestCase):
         self.assertTrue(result["repair_succeeded"])
         self.assertTrue(result["client_repair_attempted"])
         self.assertTrue(result["client_repair_succeeded"])
+
+    def test_ensure_client_ready_refreshes_client_when_reregister_is_not_enough(self):
+        with patch("subprocess.run") as run_mock:
+            run_mock.side_effect = [
+                subprocess.CalledProcessError(
+                    returncode=2316632079,
+                    cmd=[],
+                    output="",
+                    stderr="Failed when opening source(s); try the 'source reset' command.",
+                ),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+                subprocess.CalledProcessError(
+                    returncode=2316632079,
+                    cmd=[],
+                    output="",
+                    stderr="Failed when opening source(s); try the 'source reset' command.",
+                ),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="winget source list", stderr=""),
+            ]
+
+            result = self.manager.ensure_client_ready()
+
+        commands = [call.args[0] for call in run_mock.call_args_list]
+        self.assertEqual(commands[0][1:], ["source", "list", "--disable-interactivity"])
+        self.assertEqual(
+            commands[1],
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-Command",
+                "Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe",
+            ],
+        )
+        self.assertEqual(commands[2][1:], ["source", "list", "--disable-interactivity"])
+        self.assertEqual(
+            commands[3],
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-Command",
+                (
+                    "$bundle = Join-Path $env:TEMP 'Microsoft.DesktopAppInstaller.msixbundle'; "
+                    "Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile $bundle; "
+                    "Add-AppxPackage -Path $bundle -ForceApplicationShutdown"
+                ),
+            ],
+        )
+        self.assertEqual(commands[4][1:], ["source", "list", "--disable-interactivity"])
+        self.assertTrue(result["healthy"])
+        self.assertEqual(result["action"], "refreshed_client")
 
 
 if __name__ == "__main__":

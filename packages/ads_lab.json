@@ -49,7 +49,7 @@
         "Figma"
       ],
       "fallback_installer": {
-        "download_url": "https://www.figma.com/download/desktop/win",
+        "download_url": "https://desktop.figma.com/win/FigmaSetup.exe",
         "file_name": "FigmaSetup.exe",
         "install_args": [
           "/S"

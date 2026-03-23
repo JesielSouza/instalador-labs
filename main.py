@@ -652,6 +652,15 @@ def bootstrap(logger):
 
     if winget_state["state"] == "available":
         logger.info(winget_state["reason"], status="bootstrap")
+        client_health = winget.ensure_client_ready()
+        if client_health["healthy"]:
+            logger.info(client_health["detail"], status="bootstrap")
+        else:
+            logger.warning(
+                "WinGet detectado, mas ainda com sinais de instabilidade apos tentativa automatica de recuperacao. "
+                + client_health["detail"],
+                status="bootstrap_degraded",
+            )
     else:
         logger.warning(
             f"Modo degradado sem WinGet: {winget_state['reason']}",

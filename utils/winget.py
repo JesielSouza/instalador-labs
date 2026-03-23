@@ -103,6 +103,71 @@ class WinGetManager:
             "diagnostics": diagnostics,
         }
 
+    def validate_client_health(self) -> dict:
+        """Valida se o cliente do WinGet responde a uma operacao basica de source."""
+        result = self._run_winget_command(["source", "list", "--disable-interactivity"])
+        if result["success"]:
+            return {
+                "healthy": True,
+                "detail": "Cliente do WinGet respondeu normalmente ao listar as fontes.",
+                "result": result,
+            }
+
+        return {
+            "healthy": False,
+            "detail": self._summarize_result(result, "validacao operacional do WinGet"),
+            "result": result,
+        }
+
+    def ensure_client_ready(self) -> dict:
+        """Tenta deixar o WinGet operacional antes do processamento dos pacotes."""
+        initial_health = self.validate_client_health()
+        if initial_health["healthy"]:
+            return {
+                "healthy": True,
+                "action": "none",
+                "detail": initial_health["detail"],
+                "health_result": initial_health,
+            }
+
+        repair_result = self.repair_client_package()
+        post_repair_health = self.validate_client_health()
+        if post_repair_health["healthy"]:
+            return {
+                "healthy": True,
+                "action": "reregistered_client",
+                "detail": "Cliente do WinGet recuperado apos re-registro do App Installer.",
+                "health_result": post_repair_health,
+                "repair_result": repair_result,
+            }
+
+        refresh_result = self.refresh_client_package()
+        post_refresh_health = self.validate_client_health()
+        if post_refresh_health["healthy"]:
+            return {
+                "healthy": True,
+                "action": "refreshed_client",
+                "detail": "Cliente do WinGet recuperado apos atualizacao do App Installer.",
+                "health_result": post_refresh_health,
+                "repair_result": repair_result,
+                "refresh_result": refresh_result,
+            }
+
+        source_result = self.repair_sources()
+        post_source_health = self.validate_client_health()
+        return {
+            "healthy": post_source_health["healthy"],
+            "action": "full_recovery_attempt",
+            "detail": (
+                "O instalador tentou re-registrar, atualizar e resetar as fontes do WinGet. "
+                + post_source_health["detail"]
+            ),
+            "health_result": post_source_health,
+            "repair_result": repair_result,
+            "refresh_result": refresh_result,
+            "source_result": source_result,
+        }
+
     def check_package_status(self, package_id: str) -> bool:
         """
         Verifica se um pacote ja esta instalado (Idempotencia).
@@ -286,16 +351,32 @@ class WinGetManager:
             "-NoProfile",
             "-Command",
             (
-                "$pkg = Get-AppxPackage Microsoft.DesktopAppInstaller -AllUsers; "
-                "if (-not $pkg) { throw 'Microsoft.DesktopAppInstaller nao encontrado.' } "
-                "Add-AppxPackage -DisableDevelopmentMode -Register "
-                "($pkg.InstallLocation + '\\AppxManifest.xml')"
+                "Add-AppxPackage -RegisterByFamilyName "
+                "-MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe"
             ),
         ]
         result = self._run_system_command(command)
         result["attempted"] = True
         if result["success"]:
             time.sleep(2)
+            self.executable = shutil.which("winget") or resolve_winget_executable()
+        return result
+
+    def refresh_client_package(self) -> dict:
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-Command",
+            (
+                "$bundle = Join-Path $env:TEMP 'Microsoft.DesktopAppInstaller.msixbundle'; "
+                "Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile $bundle; "
+                "Add-AppxPackage -Path $bundle -ForceApplicationShutdown"
+            ),
+        ]
+        result = self._run_system_command(command)
+        result["attempted"] = True
+        if result["success"]:
+            time.sleep(3)
             self.executable = shutil.which("winget") or resolve_winget_executable()
         return result
 
