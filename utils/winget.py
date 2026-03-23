@@ -14,6 +14,7 @@ class WinGetManager:
 
     def __init__(self):
         self.executable = shutil.which("winget") or resolve_winget_executable()
+        self.default_source = "winget"
 
     def is_installed(self) -> bool:
         """Verifica se o WinGet esta acessivel no sistema."""
@@ -105,7 +106,7 @@ class WinGetManager:
 
     def check_package_status_details(self, package_id: str) -> dict:
         """Retorna diagnosticos completos da consulta `winget list --id`."""
-        result = self._run_winget_command(["list", "--id", package_id])
+        result = self._run_winget_command(self._build_package_command_args("list", package_id))
         stdout = result["stdout"]
         found = result["success"] and package_id.lower() in stdout.lower()
         detail = self._summarize_result(result, "consulta do pacote")
@@ -122,14 +123,15 @@ class WinGetManager:
     def install_package_details(self, package_id: str) -> dict:
         """Executa a instalacao silenciosa com retorno detalhado para auditoria."""
         result = self._run_winget_command(
-            [
+            self._build_package_command_args(
                 "install",
-                "--id",
                 package_id,
-                "--silent",
-                "--accept-package-agreements",
-                "--accept-source-agreements",
-            ]
+                extra_args=[
+                    "--silent",
+                    "--accept-package-agreements",
+                    "--accept-source-agreements",
+                ],
+            )
         )
         detail = self._summarize_result(result, "instalacao do pacote")
         return {
@@ -144,14 +146,15 @@ class WinGetManager:
     def upgrade_package_details(self, package_id: str) -> dict:
         """Executa a atualizacao silenciosa com retorno detalhado para auditoria."""
         result = self._run_winget_command(
-            [
+            self._build_package_command_args(
                 "upgrade",
-                "--id",
                 package_id,
-                "--silent",
-                "--accept-package-agreements",
-                "--accept-source-agreements",
-            ]
+                extra_args=[
+                    "--silent",
+                    "--accept-package-agreements",
+                    "--accept-source-agreements",
+                ],
+            )
         )
         detail = self._summarize_result(result, "atualizacao do pacote")
         return {
@@ -166,19 +169,38 @@ class WinGetManager:
     def uninstall_package_details(self, package_id: str) -> dict:
         """Executa a desinstalacao silenciosa com retorno detalhado para auditoria."""
         result = self._run_winget_command(
-            [
+            self._build_package_command_args(
                 "uninstall",
-                "--id",
                 package_id,
-                "--silent",
-                "--accept-source-agreements",
-            ]
+                extra_args=[
+                    "--silent",
+                    "--accept-source-agreements",
+                ],
+            )
         )
         detail = self._summarize_result(result, "desinstalacao do pacote")
         return {
             **result,
             "detail": detail,
         }
+
+    def _build_package_command_args(
+        self,
+        action: str,
+        package_id: str,
+        extra_args: list[str] | None = None,
+    ) -> list[str]:
+        args = [
+            action,
+            "--id",
+            package_id,
+            "--exact",
+            "--source",
+            self.default_source,
+        ]
+        if extra_args:
+            args.extend(extra_args)
+        return args
 
     def _run_winget_command(self, args: list[str]) -> dict:
         command = [self.executable, *args]
