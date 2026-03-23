@@ -95,9 +95,16 @@ class WinGetManagerCommandTests(unittest.TestCase):
         )
         self.assertTrue(result["success"])
 
-    def test_install_repairs_sources_and_retries_when_winget_cannot_open_sources(self):
+    def test_install_repairs_client_then_sources_and_retries_when_winget_cannot_open_sources(self):
         with patch("subprocess.run") as run_mock:
             run_mock.side_effect = [
+                subprocess.CalledProcessError(
+                    returncode=2316632079,
+                    cmd=[],
+                    output="",
+                    stderr="Failed when opening source(s); try the 'source reset' command.",
+                ),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
                 subprocess.CalledProcessError(
                     returncode=2316632079,
                     cmd=[],
@@ -115,26 +122,30 @@ class WinGetManagerCommandTests(unittest.TestCase):
         self.assertEqual(
             commands[1],
             [
-                "winget",
-                "source",
-                "reset",
-                "--force",
-                "--disable-interactivity",
+                "powershell.exe",
+                "-NoProfile",
+                "-Command",
+                (
+                    "$pkg = Get-AppxPackage Microsoft.DesktopAppInstaller -AllUsers; "
+                    "if (-not $pkg) { throw 'Microsoft.DesktopAppInstaller nao encontrado.' } "
+                    "Add-AppxPackage -DisableDevelopmentMode -Register "
+                    "($pkg.InstallLocation + '\\AppxManifest.xml')"
+                ),
             ],
         )
-        self.assertEqual(
-            commands[2],
-            [
-                "winget",
-                "source",
-                "update",
-                "--disable-interactivity",
-            ],
-        )
-        self.assertEqual(commands[3], commands[0])
+        self.assertEqual(commands[2][1:], commands[0][1:])
+        self.assertTrue(str(commands[2][0]).lower().endswith("winget.exe"))
+        self.assertEqual(commands[3][1:], ["source", "reset", "--force", "--disable-interactivity"])
+        self.assertTrue(str(commands[3][0]).lower().endswith("winget.exe"))
+        self.assertEqual(commands[4][1:], ["source", "update", "--disable-interactivity"])
+        self.assertTrue(str(commands[4][0]).lower().endswith("winget.exe"))
+        self.assertEqual(commands[5][1:], commands[0][1:])
+        self.assertTrue(str(commands[5][0]).lower().endswith("winget.exe"))
         self.assertTrue(result["success"])
         self.assertTrue(result["repair_attempted"])
         self.assertTrue(result["repair_succeeded"])
+        self.assertTrue(result["client_repair_attempted"])
+        self.assertTrue(result["client_repair_succeeded"])
 
 
 if __name__ == "__main__":

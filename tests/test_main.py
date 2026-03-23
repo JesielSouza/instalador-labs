@@ -267,6 +267,32 @@ class ExecutePackagePlanTests(unittest.TestCase):
         self.assertEqual(results["packages"][0]["install_method"], "fallback_direct_after_winget")
         self.assertIn("fallback direto oficial", results["packages"][0]["detail"])
 
+    def test_execute_package_plan_uses_direct_fallback_after_retryable_winget_source_failure_for_catalog_package(self):
+        profile = {
+            "profile": "teste",
+            "description": "falha recuperavel do winget com fallback direto em outro pacote",
+            "packages": [
+                {
+                    "software": "XAMPP",
+                    "install_type": "winget",
+                    "winget_id": "ApacheFriends.Xampp.8.2",
+                    "fallback_installer": {"download_url": "https://example.invalid/xampp.exe", "install_args": ["--mode", "unattended"]},
+                    "notes": "Deve cair para fallback quando o winget falhar.",
+                }
+            ],
+        }
+        logger = FakeLogger()
+        winget = FakeWinget(
+            installed=True,
+            install_failure_detail="Falha na instalacao do pacote (codigo 2316632079): Sources do WinGet foram resetadas e atualizadas, mas a operacao ainda falhou.",
+        )
+        direct_installer = FakeDirectInstaller(install_success_names={"XAMPP"})
+
+        results = main.execute_package_plan(profile, logger, winget, direct_installer, operation="install")
+
+        self.assertEqual(results["summary"]["installed"], 1)
+        self.assertEqual(results["packages"][0]["install_method"], "fallback_direct_after_winget")
+
     def test_execute_package_plan_supports_update_operation(self):
         profile = {
             "profile": "teste",

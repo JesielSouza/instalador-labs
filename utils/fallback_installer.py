@@ -83,12 +83,8 @@ class DirectInstallerManager:
         )
 
         try:
-            subprocess.run(
-                [str(installer_path), *install_args],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
+            command = self._build_install_command(installer_path, install_args)
+            subprocess.run(command, check=True, capture_output=True, text=True)
             return True
         except subprocess.CalledProcessError as error:
             logger.error(
@@ -103,3 +99,9 @@ class DirectInstallerManager:
         parsed = urllib.parse.urlparse(download_url)
         candidate = Path(parsed.path).name
         return candidate or "installer.exe"
+
+    @staticmethod
+    def _build_install_command(installer_path: Path, install_args: list[str]) -> list[str]:
+        if installer_path.suffix.lower() == ".msi":
+            return ["msiexec.exe", "/i", str(installer_path), *install_args]
+        return [str(installer_path), *install_args]
