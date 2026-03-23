@@ -11,8 +11,6 @@ $TempBuildRoot = Join-Path $ProjectRoot ".tmp-build"
 $FinalDistRoot = Join-Path $ProjectRoot "dist"
 $FinalBundle = Join-Path $FinalDistRoot "InstaladorLabs"
 $TempBundle = Join-Path $TempDistRoot "InstaladorLabs"
-$PublishTimestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-
 function Test-VenvHealthy {
     if (-not (Test-Path $VenvPython) -or -not (Test-Path $VenvConfig)) {
         return $false
@@ -57,27 +55,35 @@ function Remove-DirectoryRobustly([string]$TargetPath) {
     }
 }
 
-function Resolve-PublishBundlePath {
-    try {
-        Remove-DirectoryRobustly $FinalBundle
-        return $FinalBundle
-    } catch {
-        $fallbackBundle = Join-Path $FinalDistRoot "InstaladorLabs_build_$PublishTimestamp"
-        Write-Host "[build] Bundle principal bloqueado. Publicando em caminho alternativo: $fallbackBundle" -ForegroundColor Yellow
-        Remove-DirectoryRobustly $fallbackBundle
-        return $fallbackBundle
-    }
-}
-
 function Publish-BundleRobustly([string]$SourcePath, [string]$DestinationPath) {
     try {
+        Remove-DirectoryRobustly $DestinationPath
         Move-Item -Path $SourcePath -Destination $DestinationPath
         return
     } catch {
-        Write-Host "[build] Move-Item falhou ao publicar o bundle. Tentando copia robusta..." -ForegroundColor Yellow
+        Write-Host "[build] Publish direto falhou. Tentando sincronizacao robusta no caminho final..." -ForegroundColor Yellow
     }
 
-    Copy-Item -Path $SourcePath -Destination $DestinationPath -Recurse -Force
+    if (-not (Test-Path $DestinationPath)) {
+        New-Item -ItemType Directory -Path $DestinationPath | Out-Null
+    }
+
+    & robocopy $SourcePath $DestinationPath /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) {
+        throw @"
+Falha ao sincronizar o bundle final em $DestinationPath.
+
+Provavel causa: o bundle atual ainda esta em uso por outro processo.
+
+Como proceder:
+1. Feche o aplicativo '$FinalBundle\InstaladorLabs.exe' se ele estiver aberto.
+2. Feche janelas do Explorer, terminal ou visualizadores apontando para arquivos dentro de '$FinalBundle'.
+3. Execute novamente: powershell -ExecutionPolicy Bypass -File .\build_exe.ps1
+
+Se o problema persistir, apague manualmente a pasta '$FinalBundle' depois de fechar o aplicativo.
+"@
+    }
+
     Remove-DirectoryRobustly $SourcePath
 }
 
@@ -123,7 +129,7 @@ if (-not (Test-Path $FinalDistRoot)) {
     New-Item -ItemType Directory -Path $FinalDistRoot | Out-Null
 }
 
-$PublishBundle = Resolve-PublishBundlePath
+$PublishBundle = $FinalBundle
 Publish-BundleRobustly -SourcePath $TempBundle -DestinationPath $PublishBundle
 Remove-DirectoryRobustly $TempDistRoot
 Remove-DirectoryRobustly $TempBuildRoot
