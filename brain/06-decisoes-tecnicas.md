@@ -141,3 +141,15 @@
 * **Decisao**: Publicar o bundle funcional do Windows via GitHub Releases, gerado por workflow dedicado e compactado em `.zip`, mantendo o repositorio limpo e reprodutivel.
 * **Consequencia**: O download do instalador passa a acontecer pela aba `Releases`, com README orientando o uso e o workflow cuidando da publicacao.
 * **Status**: Implementado.
+
+## [ADR-028] - Comandos do WinGet devem fixar `--source winget` e `--exact`
+* **Contexto**: Em validacao real do `InstaladorLabs.exe`, a instalacao de `Visual Studio Code` podia travar por prompt interativo da `msstore`, apesar do fluxo ja enviar os flags de aceite de contratos.
+* **Decisao**: Todos os comandos de `list`, `install`, `upgrade` e `uninstall` por `--id` devem fixar `--source winget` e `--exact` para evitar resolucao ambigua de fonte e impedir prompts interativos inesperados da Microsoft Store.
+* **Consequencia**: O fluxo automatizado deixa de depender do estado da `msstore` para itens do catalogo que devem sair pelo repositorio principal do WinGet.
+* **Status**: Implementado e validado em campo.
+
+## [ADR-029] - Publicacao do bundle deve preservar caminho estavel e orientar o operador em caso de lock
+* **Contexto**: O `build_exe.ps1` conseguia gerar o bundle do PyInstaller, mas podia falhar ao publicar o resultado quando o diretorio `dist\InstaladorLabs` estivesse bloqueado por um executavel ainda aberto ou por arquivos em uso.
+* **Decisao**: O script de build deve sempre preservar `dist\InstaladorLabs` como caminho final esperado pelo workflow de release, tentar publicacao direta primeiro e cair para sincronizacao robusta no mesmo caminho; se ainda houver falha por lock, deve exibir instrucoes objetivas para o operador fechar o app e repetir o build.
+* **Consequencia**: O processo de release continua compativel com o workflow do GitHub e o troubleshooting local fica ensinavel ao usuario sem depender de interpretacao de erro cru do PowerShell.
+* **Status**: Implementado e validado operacionalmente.

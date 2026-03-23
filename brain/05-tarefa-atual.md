@@ -1,7 +1,7 @@
 ﻿# Tarefa Atual: Bootstrap de Ambiente Priorizando WinGet
 
-**Status:** Fluxo do `.exe` validado em campo com instalacao real, feedback visual ao operador consolidado e base do catalogo evoluindo para selecao de perfil e pacotes antes da execucao
-**Objetivo:** Evoluir o instalador de um perfil fixo de laboratorio para uma ferramenta flexivel, com escolha de perfil e de pacotes, preservando a estabilidade operacional do `.exe` e o fluxo de QA do projeto.
+**Status:** Fluxo do `.exe` validado em campo com instalacao real fim a fim, correcoes do prompt da `msstore` e da publicacao do bundle entregues na `main`, e release `v0.1.1` ja publicada para download de usuarios.
+**Objetivo:** Evoluir o instalador de um perfil fixo de laboratorio para uma ferramenta flexivel, com escolha de perfil e de pacotes, preservando a estabilidade operacional do `.exe`, a distribuicao via Releases e o fluxo de QA do projeto.
 
 ## Checklist de Execucao
 - [x] **Task 4.1**: Popular `packages/ads_lab.json` com os softwares da base institucional que ja possuem dados suficientes para o schema atual.
@@ -37,10 +37,19 @@
 - O relatorio correspondente foi gerado em `dist\\InstaladorLabs\\reports\\execution_report_20260322_113118.csv`.
 - Logs, relatorios e downloads do executavel agora devem permanecer ao lado do `.exe`, enquanto o catalogo continua vindo do bundle empacotado.
 
+## Validacao de Campo em 2026-03-23
+- O bug de bloqueio no `winget` por prompt interativo da `msstore` foi reproduzido, corrigido e validado em execucao real do `InstaladorLabs.exe`.
+- A execucao real mais recente concluiu com `3 installed`, `2 already_installed`, `0 pending`, `1 manual`, `0 failed`, `0 blocked`.
+- O fluxo confirmou sucesso para `Visual Studio Code`, `Python 3.12`, `Figma`, `MySQL Workbench` e `XAMPP`, mantendo `Astah Community` como item manual.
+- O prompt observado durante `XAMPP` veio do `Windows Defender Firewall` para `Apache HTTP Server`, nao do `winget`; o instalador voltou a concluir apos essa intervencao do sistema operacional.
+- O relatorio correspondente foi gerado em `dist\\InstaladorLabs\\reports\\execution_report_20260323_134541.csv`.
+- A release publica `v0.1.1` foi publicada com sucesso em GitHub Releases com o artefato `InstaladorLabs-v0.1.1-win64.zip`.
+
 ## Iteracao em Andamento
 - O carregador de catalogo agora deve evoluir para listar perfis disponiveis e permitir filtragem explicita dos pacotes selecionados pelo operador.
 - A interface do `.exe` agora deve consolidar a escolha de perfil, pacotes e operacao (`instalar`, `atualizar`, `desinstalar`) antes de avancar para automacoes fora do WinGet.
 - Itens fora do WinGet devem evoluir para downloads oficiais catalogados, nao para busca aberta e generica na web; quando o fornecedor descontinuar o produto, o catalogo deve apontar para a referencia oficial e manter o fluxo manual.
+- O proximo endurecimento operacional deve avaliar como orientar ou antecipar prompts de pos-instalacao vindos dos proprios aplicativos, como o alerta de firewall do Apache no `XAMPP`.
 
 ## Instrucoes para o Codex
 > A proxima iteracao deve priorizar polish de operador e estabilidade de distribuicao, sem perder o foco em uso real controlado e sem abrir PRs desnecessarias.
