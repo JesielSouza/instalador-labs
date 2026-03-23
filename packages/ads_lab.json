@@ -45,18 +45,52 @@
       "software": "Figma",
       "install_type": "winget",
       "winget_id": "Figma.Figma",
+      "detect_names": [
+        "Figma"
+      ],
+      "fallback_installer": {
+        "download_url": "https://www.figma.com/download/desktop/win",
+        "file_name": "FigmaSetup.exe",
+        "install_args": [
+          "/S"
+        ]
+      },
       "notes": "Instalacao validada no catalogo atual do WinGet."
     },
     {
       "software": "MySQL Workbench",
       "install_type": "winget",
       "winget_id": "Oracle.MySQLWorkbench",
+      "detect_names": [
+        "MySQL Workbench"
+      ],
+      "fallback_installer": {
+        "download_url": "https://cdn.mysql.com/Downloads/MySQLGUITools/mysql-workbench-community-8.0.46-winx64.msi",
+        "file_name": "mysql-workbench-community-8.0.46-winx64.msi",
+        "install_args": [
+          "/qn",
+          "/norestart"
+        ]
+      },
       "notes": "Instalacao validada no catalogo atual do WinGet; dependencia declarada e processada pelo proprio WinGet."
     },
     {
       "software": "XAMPP",
       "install_type": "winget",
       "winget_id": "ApacheFriends.Xampp.8.2",
+      "detect_names": [
+        "XAMPP"
+      ],
+      "fallback_installer": {
+        "download_url": "https://sourceforge.net/projects/xampp/files/XAMPP%20Windows/8.2.12/xampp-windows-x64-8.2.12-0-VS16-installer.exe/download",
+        "file_name": "xampp-windows-x64-8.2.12-0-VS16-installer.exe",
+        "install_args": [
+          "--mode",
+          "unattended",
+          "--unattendedmodeui",
+          "none"
+        ]
+      },
       "notes": "Instalacao validada no catalogo atual do WinGet."
     },
     {

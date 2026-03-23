@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 import sys
+import time
 import winreg
 
 from config import resolve_winget_executable
@@ -20,6 +21,12 @@ class WinGetManager:
             "source reset",
             "0x8a15000f",
             "2316632079",
+        )
+        self.client_repair_error_markers = (
+            "desktopappinstaller",
+            "app installer",
+            "microsoft.appinstaller",
+            "microsoft.desktopappinstaller",
         )
 
     def is_installed(self) -> bool:
@@ -219,16 +226,39 @@ class WinGetManager:
         if result["success"] or not self._looks_like_source_failure(result):
             return result
 
+        client_repair_result = self.repair_client_package()
+        if client_repair_result["success"]:
+            retried_after_client_repair = self._run_winget_command(args)
+            if retried_after_client_repair["success"]:
+                retried_after_client_repair["repair_attempted"] = True
+                retried_after_client_repair["repair_succeeded"] = True
+                retried_after_client_repair["client_repair_attempted"] = True
+                retried_after_client_repair["client_repair_succeeded"] = True
+                retried_after_client_repair["client_repair_result"] = client_repair_result
+                return retried_after_client_repair
+
         repair_result = self.repair_sources()
         if not repair_result["success"]:
+            client_repair_detail = ""
+            if client_repair_result.get("attempted"):
+                client_repair_detail = self._summarize_result(
+                    client_repair_result,
+                    "recuperacao do App Installer/WinGet",
+                )
             repair_detail = self._summarize_result(repair_result, "recuperacao das fontes do WinGet")
+            combined_detail = " | ".join(
+                part for part in (client_repair_detail, repair_detail) if part
+            )
             return {
                 **result,
-                "stderr": (
-                    f"{result['stderr']} | {repair_detail}" if result["stderr"] else repair_detail
+                "stderr": " | ".join(
+                    part for part in (result["stderr"], combined_detail) if part
                 ),
                 "repair_attempted": True,
                 "repair_succeeded": False,
+                "client_repair_attempted": client_repair_result.get("attempted", False),
+                "client_repair_succeeded": client_repair_result["success"],
+                "client_repair_result": client_repair_result,
                 "repair_result": repair_result,
             }
 
@@ -236,6 +266,9 @@ class WinGetManager:
         if retried_result["success"]:
             retried_result["repair_attempted"] = True
             retried_result["repair_succeeded"] = True
+            retried_result["client_repair_attempted"] = client_repair_result.get("attempted", False)
+            retried_result["client_repair_succeeded"] = client_repair_result["success"]
+            retried_result["client_repair_result"] = client_repair_result
             retried_result["repair_result"] = repair_result
             return retried_result
 
@@ -248,8 +281,30 @@ class WinGetManager:
             ).strip(),
             "repair_attempted": True,
             "repair_succeeded": True,
+            "client_repair_attempted": client_repair_result.get("attempted", False),
+            "client_repair_succeeded": client_repair_result["success"],
+            "client_repair_result": client_repair_result,
             "repair_result": repair_result,
         }
+
+    def repair_client_package(self) -> dict:
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-Command",
+            (
+                "$pkg = Get-AppxPackage Microsoft.DesktopAppInstaller -AllUsers; "
+                "if (-not $pkg) { throw 'Microsoft.DesktopAppInstaller nao encontrado.' } "
+                "Add-AppxPackage -DisableDevelopmentMode -Register "
+                "($pkg.InstallLocation + '\\AppxManifest.xml')"
+            ),
+        ]
+        result = self._run_system_command(command)
+        result["attempted"] = True
+        if result["success"]:
+            time.sleep(2)
+            self.executable = shutil.which("winget") or resolve_winget_executable()
+        return result
 
     def repair_sources(self) -> dict:
         reset_result = self._run_winget_command(
@@ -297,6 +352,9 @@ class WinGetManager:
 
     def _run_winget_command(self, args: list[str]) -> dict:
         command = [self.executable, *args]
+        return self._run_system_command(command)
+
+    def _run_system_command(self, command: list[str]) -> dict:
         try:
             completed = subprocess.run(
                 command,
@@ -338,6 +396,17 @@ class WinGetManager:
         message = " ".join(message.split())
         if len(message) > 240:
             message = message[:237] + "..."
+
+        if result.get("client_repair_attempted") and result.get("client_repair_succeeded"):
+            message = (
+                "O instalador tentou reativar o App Installer/WinGet antes de repetir a operacao. "
+                + message
+            )
+        elif result.get("client_repair_attempted"):
+            message = (
+                "O instalador tentou reativar o App Installer/WinGet automaticamente, mas sem sucesso. "
+                + message
+            )
 
         if result.get("repair_attempted") and result.get("repair_succeeded"):
             message = (
