@@ -236,6 +236,37 @@ class ExecutePackagePlanTests(unittest.TestCase):
         self.assertIn("codigo 1978335212", results["packages"][0]["detail"])
         self.assertIn("interacao manual", results["packages"][0]["detail"])
 
+    def test_execute_package_plan_uses_direct_fallback_after_retryable_winget_source_failure(self):
+        profile = {
+            "profile": "teste",
+            "description": "falha recuperavel do winget com fallback direto",
+            "packages": [
+                {
+                    "software": "Visual Studio Code",
+                    "install_type": "winget",
+                    "winget_id": "Microsoft.VisualStudioCode",
+                    "fallback_installer": {"download_url": "https://example.invalid/vscode.exe", "install_args": ["/quiet"]},
+                    "notes": "Deve cair para fallback quando o winget quebrar por source.",
+                }
+            ],
+        }
+        logger = FakeLogger()
+        winget = FakeWinget(
+            installed=True,
+            install_failure_detail=(
+                "Falha na instalacao do pacote (codigo 2316632079): "
+                "As fontes do WinGet foram resetadas e atualizadas automaticamente antes da nova tentativa."
+            ),
+        )
+        direct_installer = FakeDirectInstaller(install_success_names={"Visual Studio Code"})
+
+        results = main.execute_package_plan(profile, logger, winget, direct_installer, operation="install")
+
+        self.assertEqual(results["summary"]["installed"], 1)
+        self.assertEqual(results["packages"][0]["status"], "installed")
+        self.assertEqual(results["packages"][0]["install_method"], "fallback_direct_after_winget")
+        self.assertIn("fallback direto oficial", results["packages"][0]["detail"])
+
     def test_execute_package_plan_supports_update_operation(self):
         profile = {
             "profile": "teste",
