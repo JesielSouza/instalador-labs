@@ -169,6 +169,57 @@ def _open_target_for_operator(target: Path | str):
     os.startfile(str(target))
 
 
+def _ensure_catalog_prerequisites(package, logger, direct_installer):
+    """Valida e tenta instalar pre-requisitos declarados no catalogo antes do pacote principal."""
+    prerequisites = package.get("prerequisites", [])
+    if not prerequisites:
+        return {"ready": True, "detail": ""}
+
+    for prerequisite in prerequisites:
+        prerequisite_name = prerequisite.get("software", "Pre-requisito")
+        if direct_installer.is_package_present(prerequisite):
+            logger.info(
+                f"Pre-requisito '{prerequisite_name}' ja presente para '{package['software']}'.",
+                status="prerequisite_present",
+                package_name=package["software"],
+            )
+            continue
+
+        if not prerequisite.get("fallback_installer"):
+            detail = (
+                f"Pre-requisito '{prerequisite_name}' ausente e sem automacao configurada no catalogo."
+            )
+            logger.error(
+                detail,
+                status="prerequisite_missing",
+                package_name=package["software"],
+            )
+            return {"ready": False, "detail": detail}
+
+        logger.warning(
+            f"Pre-requisito '{prerequisite_name}' ausente para '{package['software']}'. Tentando instalar antes do pacote principal.",
+            status="prerequisite_installing",
+            package_name=package["software"],
+        )
+        if direct_installer.install_package(prerequisite, logger):
+            logger.info(
+                f"Pre-requisito '{prerequisite_name}' instalado para '{package['software']}'.",
+                status="prerequisite_installed",
+                package_name=package["software"],
+            )
+            continue
+
+        detail = f"Falha ao instalar o pre-requisito '{prerequisite_name}' antes de '{package['software']}'."
+        logger.error(
+            detail,
+            status="prerequisite_error",
+            package_name=package["software"],
+        )
+        return {"ready": False, "detail": detail}
+
+    return {"ready": True, "detail": ""}
+
+
 def launch_operator_runtime_window():
     """Abre uma janela unica para acompanhar a execucao do instalador."""
     import tkinter as tk
@@ -945,6 +996,13 @@ def process_package(package, logger, winget, direct_installer, operation: str = 
             result["status"] = "already_installed"
             result["install_method"] = "winget_detect"
             result["detail"] = "Pacote localizado pelo WinGet antes da instalacao."
+            return result
+
+        prerequisite_check = _ensure_catalog_prerequisites(package, logger, direct_installer)
+        if not prerequisite_check["ready"]:
+            result["status"] = "failed"
+            result["install_method"] = "prerequisite_check"
+            result["detail"] = prerequisite_check["detail"]
             return result
 
         logger.info(

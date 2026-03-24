@@ -1,4 +1,5 @@
 import unittest
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -88,6 +89,45 @@ class DirectInstallerManagerTests(unittest.TestCase):
             ["msiexec.exe", "/i", r"C:\tmp\mysql.msi", "/L*V", r"C:\logs\mysql_msi.log", "/qn"]
         )
         self.assertEqual(hint, r"C:\logs\mysql_msi.log")
+
+    def test_install_package_runs_prerequisite_before_main_installer(self):
+        logger = FakeLogger()
+        package = {
+            "software": "MySQL Workbench",
+            "prerequisites": [
+                {
+                    "software": "Microsoft Visual C++ Redistributable (x64)",
+                    "detect_names": ["Microsoft Visual C++ 2015-2022 Redistributable (x64)"],
+                    "fallback_installer": {
+                        "download_url": "https://example.invalid/vc_redist.x64.exe",
+                        "install_args": ["/install", "/quiet", "/norestart"],
+                    },
+                }
+            ],
+            "fallback_installer": {
+                "download_url": "https://example.invalid/mysql.msi",
+                "install_args": ["/qn", "/norestart"],
+            },
+        }
+
+        with patch.object(
+            self.manager,
+            "download_installer",
+            side_effect=[Path(r"C:\tmp\vc_redist.x64.exe"), Path(r"C:\tmp\mysql.msi")],
+        ), patch.object(self.manager, "is_package_present", return_value=False), patch(
+            "subprocess.run"
+        ) as run_mock:
+            run_mock.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+            result = self.manager.install_package(package, logger)
+
+        commands = [call.args[0] for call in run_mock.call_args_list]
+        self.assertTrue(result)
+        self.assertEqual(
+            commands[0],
+            [r"C:\tmp\vc_redist.x64.exe", "/install", "/quiet", "/norestart"],
+        )
+        self.assertEqual(commands[1][0:3], ["msiexec.exe", "/i", r"C:\tmp\mysql.msi"])
 
 
 if __name__ == "__main__":

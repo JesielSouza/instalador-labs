@@ -107,6 +107,52 @@ def validate_package_profile(profile: dict) -> dict:
                     f"Pacote invalido na posicao {index}: 'detect_names' deve ser uma lista de strings nao vazias."
                 )
 
+        prerequisites = package.get("prerequisites")
+        if prerequisites is not None:
+            if not isinstance(prerequisites, list) or not prerequisites:
+                raise PackageProfileValidationError(
+                    f"Pacote invalido na posicao {index}: 'prerequisites' deve ser uma lista nao vazia quando informada."
+                )
+
+            for prerequisite_index, prerequisite in enumerate(prerequisites, start=1):
+                if not isinstance(prerequisite, dict):
+                    raise PackageProfileValidationError(
+                        f"Pacote invalido na posicao {index}: pre-requisito {prerequisite_index} deve ser um objeto."
+                    )
+
+                if not isinstance(prerequisite.get("software"), str) or not prerequisite["software"].strip():
+                    raise PackageProfileValidationError(
+                        f"Pacote invalido na posicao {index}: pre-requisito {prerequisite_index} precisa de 'software' nao vazio."
+                    )
+
+                prerequisite_detect_names = prerequisite.get("detect_names")
+                if prerequisite_detect_names is not None and (
+                    not isinstance(prerequisite_detect_names, list)
+                    or not all(isinstance(item, str) and item.strip() for item in prerequisite_detect_names)
+                ):
+                    raise PackageProfileValidationError(
+                        f"Pacote invalido na posicao {index}: 'prerequisites[{prerequisite_index}].detect_names' deve ser uma lista de strings nao vazias."
+                    )
+
+                prerequisite_fallback = prerequisite.get("fallback_installer")
+                if prerequisite_fallback is None or not isinstance(prerequisite_fallback, dict):
+                    raise PackageProfileValidationError(
+                        f"Pacote invalido na posicao {index}: pre-requisito {prerequisite_index} exige 'fallback_installer' valido."
+                    )
+
+                if not isinstance(prerequisite_fallback.get("download_url"), str) or not prerequisite_fallback["download_url"].strip():
+                    raise PackageProfileValidationError(
+                        f"Pacote invalido na posicao {index}: 'prerequisites[{prerequisite_index}].fallback_installer.download_url' deve ser string nao vazia."
+                    )
+
+                prerequisite_install_args = prerequisite_fallback.get("install_args")
+                if not isinstance(prerequisite_install_args, list) or not all(
+                    isinstance(arg, str) for arg in prerequisite_install_args
+                ):
+                    raise PackageProfileValidationError(
+                        f"Pacote invalido na posicao {index}: 'prerequisites[{prerequisite_index}].fallback_installer.install_args' deve ser uma lista de strings."
+                    )
+
         for installer_key, require_install_args in (("fallback_installer", True), ("official_download", False)):
             installer_config = package.get(installer_key)
             if installer_config is None:

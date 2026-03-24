@@ -145,6 +145,7 @@ class WinGetManagerCommandTests(unittest.TestCase):
     def test_ensure_client_ready_refreshes_client_when_reregister_is_not_enough(self):
         with patch("subprocess.run") as run_mock:
             run_mock.side_effect = [
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="v1.28.220", stderr=""),
                 subprocess.CalledProcessError(
                     returncode=2316632079,
                     cmd=[],
@@ -165,9 +166,10 @@ class WinGetManagerCommandTests(unittest.TestCase):
             result = self.manager.ensure_client_ready()
 
         commands = [call.args[0] for call in run_mock.call_args_list]
-        self.assertEqual(commands[0][1:], ["source", "list", "--disable-interactivity"])
+        self.assertEqual(commands[0], ["winget", "--version"])
+        self.assertEqual(commands[1][1:], ["source", "list", "--disable-interactivity"])
         self.assertEqual(
-            commands[1],
+            commands[2],
             [
                 "powershell.exe",
                 "-NoProfile",
@@ -175,9 +177,9 @@ class WinGetManagerCommandTests(unittest.TestCase):
                 "Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe",
             ],
         )
-        self.assertEqual(commands[2][1:], ["source", "list", "--disable-interactivity"])
+        self.assertEqual(commands[3][1:], ["source", "list", "--disable-interactivity"])
         self.assertEqual(
-            commands[3],
+            commands[4],
             [
                 "powershell.exe",
                 "-NoProfile",
@@ -189,7 +191,7 @@ class WinGetManagerCommandTests(unittest.TestCase):
                 ),
             ],
         )
-        self.assertEqual(commands[4][1:], ["source", "list", "--disable-interactivity"])
+        self.assertEqual(commands[5][1:], ["source", "list", "--disable-interactivity"])
         self.assertTrue(result["healthy"])
         self.assertEqual(result["action"], "refreshed_client")
 
@@ -224,6 +226,49 @@ class WinGetManagerCommandTests(unittest.TestCase):
         self.assertTrue(result["active"])
         self.assertTrue(result["winhttp_proxy_active"])
         self.assertIn("proxy.campus.local:8080", result["detail"])
+
+    def test_proxy_diagnostics_recognize_direct_access_in_portuguese_without_false_positive(self):
+        with patch.dict("os.environ", {}, clear=True), patch("subprocess.run") as run_mock:
+            run_mock.return_value = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="Configuracoes do proxy WinHTTP atuais:\n    Acesso direto (nenhum servidor proxy)",
+                stderr="",
+            )
+
+            result = self.manager.get_proxy_diagnostics()
+
+        self.assertFalse(result["active"])
+        self.assertFalse(result["winhttp_proxy_active"])
+
+    def test_ensure_client_ready_refreshes_outdated_client_before_install_flow(self):
+        with patch("subprocess.run") as run_mock:
+            run_mock.side_effect = [
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="v1.12.470", stderr=""),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="winget source list", stderr=""),
+            ]
+
+            result = self.manager.ensure_client_ready()
+
+        commands = [call.args[0] for call in run_mock.call_args_list]
+        self.assertEqual(commands[0], ["winget", "--version"])
+        self.assertEqual(
+            commands[1],
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-Command",
+                (
+                    "$bundle = Join-Path $env:TEMP 'Microsoft.DesktopAppInstaller.msixbundle'; "
+                    "Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile $bundle; "
+                    "Add-AppxPackage -Path $bundle -ForceApplicationShutdown"
+                ),
+            ],
+        )
+        self.assertEqual(commands[2][1:], ["source", "list", "--disable-interactivity"])
+        self.assertTrue(result["healthy"])
+        self.assertEqual(result["action"], "refreshed_outdated_client")
 
 
 if __name__ == "__main__":

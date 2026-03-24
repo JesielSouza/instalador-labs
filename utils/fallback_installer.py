@@ -79,6 +79,9 @@ class DirectInstallerManager:
 
     def install_package(self, package: dict, logger) -> bool:
         """Executa o fallback por instalador direto."""
+        if not self._install_prerequisites(package, logger):
+            return False
+
         installer_path = self.download_installer(package, logger, config_key="fallback_installer")
         install_args = package["fallback_installer"]["install_args"]
 
@@ -109,6 +112,34 @@ class DirectInstallerManager:
                 package_name=package["software"],
             )
             return False
+
+    def _install_prerequisites(self, package: dict, logger) -> bool:
+        for prerequisite in package.get("prerequisites", []):
+            prerequisite_name = prerequisite.get("software", "Pre-requisito")
+            if self.is_package_present(prerequisite):
+                logger.info(
+                    f"Pre-requisito '{prerequisite_name}' ja presente; seguindo com '{package['software']}'.",
+                    status="fallback_prerequisite_present",
+                    package_name=package["software"],
+                )
+                continue
+
+            logger.info(
+                f"Instalando pre-requisito '{prerequisite_name}' antes de '{package['software']}'.",
+                status="fallback_prerequisite_installing",
+                package_name=package["software"],
+            )
+            if self.install_package(prerequisite, logger):
+                continue
+
+            logger.error(
+                f"Falha ao instalar o pre-requisito '{prerequisite_name}' para '{package['software']}'.",
+                status="fallback_prerequisite_error",
+                package_name=package["software"],
+            )
+            return False
+
+        return True
 
     @staticmethod
     def _infer_file_name(download_url: str) -> str:

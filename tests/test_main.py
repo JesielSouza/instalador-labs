@@ -384,6 +384,43 @@ class ExecutePackagePlanTests(unittest.TestCase):
         self.assertEqual(results["packages"][1]["status"], "not_installed")
         self.assertEqual(results["packages"][2]["status"], "manual")
 
+    def test_execute_package_plan_installs_catalog_prerequisite_before_winget_package(self):
+        profile = {
+            "profile": "teste",
+            "description": "pre-requisito declarado no catalogo",
+            "packages": [
+                {
+                    "software": "MySQL Workbench",
+                    "install_type": "winget",
+                    "winget_id": "Oracle.MySQLWorkbench",
+                    "detect_names": ["MySQL Workbench"],
+                    "prerequisites": [
+                        {
+                            "software": "Microsoft Visual C++ Redistributable (x64)",
+                            "detect_names": ["Microsoft Visual C++ 2015-2022 Redistributable (x64)"],
+                            "fallback_installer": {
+                                "download_url": "https://example.invalid/vc_redist.x64.exe",
+                                "install_args": ["/install", "/quiet", "/norestart"],
+                            },
+                        }
+                    ],
+                    "notes": "Deve instalar o pre-requisito antes do pacote principal.",
+                }
+            ],
+        }
+        logger = FakeLogger()
+        winget = FakeWinget(installed=True, install_success_ids={"Oracle.MySQLWorkbench"})
+        direct_installer = FakeDirectInstaller(install_success_names={"Microsoft Visual C++ Redistributable (x64)"})
+
+        results = main.execute_package_plan(profile, logger, winget, direct_installer, operation="install")
+
+        self.assertEqual(results["summary"]["installed"], 1)
+        self.assertEqual(results["packages"][0]["install_method"], "winget")
+        self.assertTrue(
+            any(item[1] == "prerequisite_installed" for item in logger.messages),
+            logger.messages,
+        )
+
     def test_execute_package_plan_downloads_official_installer_for_manual_item(self):
         profile = {
             "profile": "teste",

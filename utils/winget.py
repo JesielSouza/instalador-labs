@@ -3,6 +3,7 @@ import subprocess
 import sys
 import time
 import os
+import unicodedata
 import winreg
 
 from config import resolve_winget_executable
@@ -17,6 +18,7 @@ class WinGetManager:
     def __init__(self):
         self.executable = shutil.which("winget") or resolve_winget_executable()
         self.default_source = "winget"
+        self.minimum_preferred_version = (1, 28, 0)
         self.systemic_install_failure = False
         self.systemic_install_failure_diagnostics = ""
         self.source_repair_error_markers = (
@@ -121,10 +123,11 @@ class WinGetManager:
         netsh_text = " ".join(
             part for part in (netsh_result.get("stdout", ""), netsh_result.get("stderr", "")) if part
         ).strip()
-        normalized_netsh = " ".join(netsh_text.lower().split())
+        normalized_netsh = self._normalize_text(netsh_text)
         winhttp_proxy_active = (
             bool(netsh_result["success"])
             and "direct access (no proxy server)" not in normalized_netsh
+            and "acesso direto (nenhum servidor proxy)" not in normalized_netsh
             and "acesso direto (sem servidor proxy)" not in normalized_netsh
         )
         proxy_active = bool(environment_values) or winhttp_proxy_active
@@ -174,6 +177,19 @@ class WinGetManager:
 
     def ensure_client_ready(self) -> dict:
         """Tenta deixar o WinGet operacional antes do processamento dos pacotes."""
+        proactive_refresh_result = None
+        if self._needs_client_refresh():
+            proactive_refresh_result = self.refresh_client_package()
+            post_refresh_health = self.validate_client_health()
+            if post_refresh_health["healthy"]:
+                return {
+                    "healthy": True,
+                    "action": "refreshed_outdated_client",
+                    "detail": "Cliente do WinGet atualizado preventivamente antes da execucao.",
+                    "health_result": post_refresh_health,
+                    "refresh_result": proactive_refresh_result,
+                }
+
         initial_health = self.validate_client_health()
         if initial_health["healthy"]:
             return {
@@ -181,6 +197,7 @@ class WinGetManager:
                 "action": "none",
                 "detail": initial_health["detail"],
                 "health_result": initial_health,
+                "refresh_result": proactive_refresh_result,
             }
 
         repair_result = self.repair_client_package()
@@ -191,6 +208,7 @@ class WinGetManager:
                 "action": "reregistered_client",
                 "detail": "Cliente do WinGet recuperado apos re-registro do App Installer.",
                 "health_result": post_repair_health,
+                "refresh_result": proactive_refresh_result,
                 "repair_result": repair_result,
             }
 
@@ -203,6 +221,7 @@ class WinGetManager:
                 "detail": "Cliente do WinGet recuperado apos atualizacao do App Installer.",
                 "health_result": post_refresh_health,
                 "repair_result": repair_result,
+                "pre_refresh_result": proactive_refresh_result,
                 "refresh_result": refresh_result,
             }
 
@@ -216,6 +235,7 @@ class WinGetManager:
                 + post_source_health["detail"]
             ),
             "health_result": post_source_health,
+            "pre_refresh_result": proactive_refresh_result,
             "repair_result": repair_result,
             "refresh_result": refresh_result,
             "source_result": source_result,
@@ -497,6 +517,27 @@ class WinGetManager:
     def _record_systemic_install_failure(self, result: dict) -> None:
         self.systemic_install_failure = True
         self.systemic_install_failure_diagnostics = self._build_diagnostics(result)
+
+    def get_version_tuple(self) -> tuple[int, ...]:
+        version_text = (self.get_version() or "").strip().lower().lstrip("v")
+        parts = []
+        for chunk in version_text.split("."):
+            if not chunk.isdigit():
+                break
+            parts.append(int(chunk))
+        return tuple(parts)
+
+    def _needs_client_refresh(self) -> bool:
+        version_tuple = self.get_version_tuple()
+        if not version_tuple:
+            return False
+        return version_tuple < self.minimum_preferred_version
+
+    @staticmethod
+    def _normalize_text(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value or "")
+        ascii_only = "".join(char for char in normalized if not unicodedata.combining(char))
+        return " ".join(ascii_only.lower().split())
 
     def _run_system_command(self, command: list[str]) -> dict:
         try:
