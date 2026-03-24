@@ -1,3 +1,4 @@
+import ssl
 import unittest
 import subprocess
 from pathlib import Path
@@ -13,6 +14,9 @@ class FakeLogger:
 
     def info(self, message, status="info", package_name="-"):
         self.messages.append(("info", status, package_name, message))
+
+    def warning(self, message, status="warning", package_name="-"):
+        self.messages.append(("warning", status, package_name, message))
 
     def error(self, message, status="error", package_name="-"):
         self.messages.append(("error", status, package_name, message))
@@ -79,6 +83,41 @@ class DirectInstallerManagerTests(unittest.TestCase):
             "download_installer",
             return_value=Path(r"C:\tmp\FigmaSetup.exe"),
         ), patch("subprocess.run", side_effect=OSError(193, "%1 nao e um aplicativo Win32 valido")):
+            result = self.manager.install_package(self.package, logger)
+
+        self.assertFalse(result)
+        self.assertTrue(any(item[0] == "error" for item in logger.messages))
+
+    def test_download_installer_retries_with_powershell_after_ssl_error(self):
+        logger = FakeLogger()
+        temp_dir = Path(".tmp-test-fallback-ssl")
+        temp_dir.mkdir(exist_ok=True)
+        try:
+            with patch("utils.fallback_installer.DOWNLOADS_DIR", temp_dir), patch(
+                "urllib.request.urlretrieve",
+                side_effect=ssl.SSLCertVerificationError(1, "certificate verify failed"),
+            ), patch.object(self.manager, "_download_with_powershell") as powershell_download_mock:
+                def fake_powershell_download(_url, target_path):
+                    Path(target_path).write_bytes(b"MZtest")
+
+                powershell_download_mock.side_effect = fake_powershell_download
+
+                installer_path = self.manager.download_installer(self.package, logger)
+
+            self.assertEqual(installer_path, temp_dir / "FigmaSetup.exe")
+            self.assertTrue(any(item[1] == "fallback_download_ssl_retry" for item in logger.messages))
+        finally:
+            for child in temp_dir.glob("*"):
+                child.unlink(missing_ok=True)
+            temp_dir.rmdir()
+
+    def test_install_package_handles_download_failure_without_crashing(self):
+        logger = FakeLogger()
+        with patch.object(
+            self.manager,
+            "download_installer",
+            side_effect=RuntimeError("Falha SSL ao baixar arquivo"),
+        ):
             result = self.manager.install_package(self.package, logger)
 
         self.assertFalse(result)

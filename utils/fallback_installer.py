@@ -1,4 +1,6 @@
+import ssl
 import subprocess
+import urllib.error
 import urllib.parse
 import urllib.request
 import winreg
@@ -69,7 +71,18 @@ class DirectInstallerManager:
             status="fallback_downloading" if config_key == "fallback_installer" else "manual_downloading",
             package_name=package["software"],
         )
-        urllib.request.urlretrieve(download_url, target_path)
+        try:
+            urllib.request.urlretrieve(download_url, target_path)
+        except Exception as error:
+            if self._looks_like_ssl_certificate_error(error):
+                logger.warning(
+                    f"Falha SSL ao baixar '{package['software']}' com o downloader Python. Tentando PowerShell/WinHTTP.",
+                    status="fallback_download_ssl_retry",
+                    package_name=package["software"],
+                )
+                self._download_with_powershell(download_url, target_path)
+            else:
+                raise RuntimeError(f"Falha ao baixar '{package['software']}': {error}") from error
         self._ensure_valid_installer_file(target_path)
         return target_path
 
@@ -79,19 +92,19 @@ class DirectInstallerManager:
 
     def install_package(self, package: dict, logger) -> bool:
         """Executa o fallback por instalador direto."""
-        if not self._install_prerequisites(package, logger):
-            return False
-
-        installer_path = self.download_installer(package, logger, config_key="fallback_installer")
-        install_args = package["fallback_installer"]["install_args"]
-
-        logger.info(
-            f"Executando fallback por instalador direto para '{package['software']}'.",
-            status="fallback_installing",
-            package_name=package["software"],
-        )
-
         try:
+            if not self._install_prerequisites(package, logger):
+                return False
+
+            installer_path = self.download_installer(package, logger, config_key="fallback_installer")
+            install_args = package["fallback_installer"]["install_args"]
+
+            logger.info(
+                f"Executando fallback por instalador direto para '{package['software']}'.",
+                status="fallback_installing",
+                package_name=package["software"],
+            )
+
             command = self._build_install_command(installer_path, install_args)
             subprocess.run(command, check=True, capture_output=True, text=True)
             return True
@@ -106,6 +119,13 @@ class DirectInstallerManager:
             )
             return False
         except OSError as error:
+            logger.error(
+                f"Falha no fallback direto de '{package['software']}': {error}",
+                status="fallback_install_error",
+                package_name=package["software"],
+            )
+            return False
+        except Exception as error:
             logger.error(
                 f"Falha no fallback direto de '{package['software']}': {error}",
                 status="fallback_install_error",
@@ -191,3 +211,30 @@ class DirectInstallerManager:
             if str(part).upper() == "/L*V" and index + 1 < len(command):
                 return str(command[index + 1])
         return ""
+
+    @staticmethod
+    def _looks_like_ssl_certificate_error(error: Exception) -> bool:
+        if isinstance(error, ssl.SSLError):
+            return True
+
+        if isinstance(error, urllib.error.URLError) and isinstance(error.reason, ssl.SSLError):
+            return True
+
+        message = " ".join(str(part) for part in (error, getattr(error, "reason", "")) if part).lower()
+        return "certificate_verify_failed" in message or "unable to get local issuer certificate" in message
+
+    @staticmethod
+    def _download_with_powershell(download_url: str, target_path: Path) -> None:
+        safe_url = download_url.replace("'", "''")
+        safe_target = str(target_path).replace("'", "''")
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-Command",
+            f"Invoke-WebRequest -Uri '{safe_url}' -OutFile '{safe_target}'",
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as error:
+            message = error.stderr.strip() or error.stdout.strip() or str(error)
+            raise RuntimeError(f"Falha no download via PowerShell/WinHTTP: {message}") from error
