@@ -238,6 +238,30 @@ class ExecutePackagePlanTests(unittest.TestCase):
         self.assertEqual(results["packages"][0]["install_method"], "fallback_direct")
         self.assertEqual(results["packages"][1]["install_method"], "blocked_no_winget")
 
+    def test_execute_package_plan_detects_installed_package_via_registry_before_winget(self):
+        profile = {
+            "profile": "teste",
+            "description": "deteccao local antes do winget",
+            "packages": [
+                {
+                    "software": "Visual Studio Code",
+                    "install_type": "winget",
+                    "winget_id": "Microsoft.VisualStudioCode",
+                    "detect_names": ["Microsoft Visual Studio Code"],
+                    "notes": "Deve ser identificado localmente sem chamar winget install.",
+                }
+            ],
+        }
+        logger = FakeLogger()
+        winget = FakeWinget(installed=True)
+        direct_installer = FakeDirectInstaller(present_names={"Visual Studio Code"})
+
+        results = main.execute_package_plan(profile, logger, winget, direct_installer, operation="install")
+
+        self.assertEqual(results["summary"]["already_installed"], 1)
+        self.assertEqual(results["packages"][0]["status"], "already_installed")
+        self.assertEqual(results["packages"][0]["install_method"], "registry_detect")
+
     def test_execute_package_plan_preserves_detailed_install_failure_reason(self):
         profile = {
             "profile": "teste",

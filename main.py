@@ -907,14 +907,14 @@ def process_package(package, logger, winget, direct_installer, operation: str = 
         return result
 
     if operation == "install":
-        if not winget.is_installed():
-            if direct_installer.is_package_present(package):
-                logger.success(package_name, status="already_installed")
-                result["status"] = "already_installed"
-                result["install_method"] = "registry_detect"
-                result["detail"] = "Pacote detectado no host sem necessidade de instalacao."
-                return result
+        if direct_installer.is_package_present(package):
+            logger.success(package_name, status="already_installed")
+            result["status"] = "already_installed"
+            result["install_method"] = "registry_detect"
+            result["detail"] = "Pacote detectado no host sem necessidade de instalacao."
+            return result
 
+        if not winget.is_installed():
             if package.get("fallback_installer"):
                 if direct_installer.install_package(package, logger):
                     logger.success(package_name, status="installed")
