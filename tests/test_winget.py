@@ -210,6 +210,21 @@ class WinGetManagerCommandTests(unittest.TestCase):
         self.assertIn("stdout=Installer failed in phase download.", result["diagnostics"])
         self.assertIn("stderr=The installer hash does not match.", result["diagnostics"])
 
+    def test_proxy_diagnostics_detect_winhttp_proxy(self):
+        with patch.dict("os.environ", {}, clear=True), patch("subprocess.run") as run_mock:
+            run_mock.return_value = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="Current WinHTTP proxy settings:\n    Proxy Server(s) : proxy.campus.local:8080",
+                stderr="",
+            )
+
+            result = self.manager.get_proxy_diagnostics()
+
+        self.assertTrue(result["active"])
+        self.assertTrue(result["winhttp_proxy_active"])
+        self.assertIn("proxy.campus.local:8080", result["detail"])
+
 
 if __name__ == "__main__":
     unittest.main()

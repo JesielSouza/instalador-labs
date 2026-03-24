@@ -2,6 +2,7 @@ import shutil
 import subprocess
 import sys
 import time
+import os
 import winreg
 
 from config import resolve_winget_executable
@@ -104,6 +105,56 @@ class WinGetManager:
             "reason": f"Windows compativel (build {build}), mas o WinGet nao foi localizado.",
             "diagnostics": diagnostics,
         }
+
+    def get_proxy_diagnostics(self) -> dict:
+        """Coleta sinais de proxy local que podem interferir no WinGet."""
+        environment_values = {
+            key: value
+            for key, value in (
+                ("HTTP_PROXY", os.environ.get("HTTP_PROXY")),
+                ("HTTPS_PROXY", os.environ.get("HTTPS_PROXY")),
+                ("ALL_PROXY", os.environ.get("ALL_PROXY")),
+            )
+            if value
+        }
+        netsh_result = self._run_system_command(["netsh", "winhttp", "show", "proxy"])
+        netsh_text = " ".join(
+            part for part in (netsh_result.get("stdout", ""), netsh_result.get("stderr", "")) if part
+        ).strip()
+        normalized_netsh = " ".join(netsh_text.lower().split())
+        winhttp_proxy_active = (
+            bool(netsh_result["success"])
+            and "direct access (no proxy server)" not in normalized_netsh
+            and "acesso direto (sem servidor proxy)" not in normalized_netsh
+        )
+        proxy_active = bool(environment_values) or winhttp_proxy_active
+
+        parts = []
+        if environment_values:
+            parts.append(
+                "Variaveis de ambiente de proxy: "
+                + ", ".join(f"{key}={value}" for key, value in environment_values.items())
+            )
+        if netsh_text:
+            parts.append(f"WinHTTP: {' '.join(netsh_text.split())}")
+
+        detail = " | ".join(parts) if parts else "Nenhum indicio local de proxy foi encontrado."
+        return {
+            "active": proxy_active,
+            "environment": environment_values,
+            "winhttp_proxy_active": winhttp_proxy_active,
+            "detail": detail,
+        }
+
+    def build_network_guidance(self) -> str:
+        proxy_info = self.get_proxy_diagnostics()
+        if proxy_info["active"]:
+            return (
+                "Proxy ativo detectado. Em redes corporativas/campus, valide liberacao no proxy e no firewall "
+                "para o trafego do WinGet/App Installer. "
+                + proxy_info["detail"]
+            )
+        return "Sem indicio local de proxy; se a falha persistir, valide regras de firewall/proxy da rede."
 
     def validate_client_health(self) -> dict:
         """Valida se o cliente do WinGet responde a uma operacao basica de source."""
