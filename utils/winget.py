@@ -54,12 +54,14 @@ class WinGetManager:
         product_name = self._read_windows_registry_value("ProductName")
         display_version = self._read_windows_registry_value("DisplayVersion")
         release_id = self._read_windows_registry_value("ReleaseId")
+        inferred_product_name = self._infer_windows_product_name(version.build, product_name)
 
         return {
             "major": version.major,
             "minor": version.minor,
             "build": version.build,
-            "product_name": product_name or "Desconhecido",
+            "product_name": inferred_product_name,
+            "raw_product_name": product_name or "Desconhecido",
             "display_version": display_version or release_id or "Desconhecida",
         }
 
@@ -186,10 +188,13 @@ class WinGetManager:
                     "healthy": True,
                     "action": "refreshed_outdated_client",
                     "detail": "Cliente do WinGet atualizado preventivamente antes da execucao.",
-                    "health_result": post_refresh_health,
-                    "refresh_result": proactive_refresh_result,
-                }
+                "health_result": post_refresh_health,
+                "refresh_result": proactive_refresh_result,
+                "initial_version": self._extract_version_from_refresh_result(proactive_refresh_result),
+                "final_version": self.get_version(),
+            }
 
+        initial_version = self.get_version()
         initial_health = self.validate_client_health()
         if initial_health["healthy"]:
             return {
@@ -198,6 +203,8 @@ class WinGetManager:
                 "detail": initial_health["detail"],
                 "health_result": initial_health,
                 "refresh_result": proactive_refresh_result,
+                "initial_version": initial_version,
+                "final_version": initial_version,
             }
 
         repair_result = self.repair_client_package()
@@ -210,6 +217,8 @@ class WinGetManager:
                 "health_result": post_repair_health,
                 "refresh_result": proactive_refresh_result,
                 "repair_result": repair_result,
+                "initial_version": initial_version,
+                "final_version": self.get_version(),
             }
 
         refresh_result = self.refresh_client_package()
@@ -223,6 +232,8 @@ class WinGetManager:
                 "repair_result": repair_result,
                 "pre_refresh_result": proactive_refresh_result,
                 "refresh_result": refresh_result,
+                "initial_version": initial_version,
+                "final_version": self.get_version(),
             }
 
         source_result = self.repair_sources()
@@ -239,6 +250,8 @@ class WinGetManager:
             "repair_result": repair_result,
             "refresh_result": refresh_result,
             "source_result": source_result,
+            "initial_version": initial_version,
+            "final_version": self.get_version(),
         }
 
     def check_package_status(self, package_id: str) -> bool:
@@ -449,6 +462,7 @@ class WinGetManager:
         return result
 
     def refresh_client_package(self) -> dict:
+        observed_version_before_refresh = self.get_version()
         command = [
             "powershell.exe",
             "-NoProfile",
@@ -461,6 +475,7 @@ class WinGetManager:
         ]
         result = self._run_system_command(command)
         result["attempted"] = True
+        result["observed_version_before_refresh"] = observed_version_before_refresh
         if result["success"]:
             time.sleep(3)
             self.executable = shutil.which("winget") or resolve_winget_executable()
@@ -532,6 +547,23 @@ class WinGetManager:
         if not version_tuple:
             return False
         return version_tuple < self.minimum_preferred_version
+
+    @staticmethod
+    def _infer_windows_product_name(build: int, raw_product_name: str | None) -> str:
+        normalized = (raw_product_name or "").strip()
+        if build >= 22000:
+            if normalized and "windows 11" in normalized.lower():
+                return normalized
+            if normalized and "windows 10" in normalized.lower():
+                return normalized.replace("Windows 10", "Windows 11")
+            return "Windows 11"
+        return normalized or "Windows"
+
+    @staticmethod
+    def _extract_version_from_refresh_result(refresh_result: dict | None) -> str:
+        if not refresh_result:
+            return "Desconhecida"
+        return refresh_result.get("observed_version_before_refresh", "Desconhecida")
 
     @staticmethod
     def _normalize_text(value: str) -> str:

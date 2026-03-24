@@ -695,14 +695,24 @@ def bootstrap(logger):
 
     winget_state = winget.classify_winget_state()
     diagnostics = winget_state["diagnostics"]
-    logger.info(
+    raw_product_name = diagnostics.get("raw_product_name", diagnostics["product_name"])
+    windows_message = (
         "Windows detectado: "
-        f"{diagnostics['product_name']} | versao {diagnostics['display_version']} | build {diagnostics['build']}.",
+        f"{diagnostics['product_name']} | versao {diagnostics['display_version']} | build {diagnostics['build']}."
+    )
+    if raw_product_name != diagnostics["product_name"]:
+        windows_message += f" Registro legado reportou: {raw_product_name}."
+    logger.info(
+        windows_message,
         status="bootstrap",
     )
 
     if winget_state["state"] == "available":
         logger.info(winget_state["reason"], status="bootstrap")
+        logger.info(
+            f"Consulta inicial do WinGet concluida. Executavel: {winget.executable} | versao observada: {winget.get_version()}",
+            status="bootstrap",
+        )
         proxy_diagnostics = winget.get_proxy_diagnostics()
         if proxy_diagnostics["active"]:
             logger.warning(
@@ -713,10 +723,24 @@ def bootstrap(logger):
         client_health = winget.ensure_client_ready()
         if client_health["healthy"]:
             logger.info(client_health["detail"], status="bootstrap")
+            logger.info(
+                "Estado final do WinGet apos bootstrap: "
+                f"acao={client_health.get('action', 'none')} | "
+                f"versao_inicial={client_health.get('initial_version', 'Desconhecida')} | "
+                f"versao_final={client_health.get('final_version', 'Desconhecida')}",
+                status="bootstrap",
+            )
         else:
             logger.warning(
                 "WinGet detectado, mas ainda com sinais de instabilidade apos tentativa automatica de recuperacao. "
                 + client_health["detail"],
+                status="bootstrap_degraded",
+            )
+            logger.warning(
+                "Estado final do WinGet apos bootstrap degradado: "
+                f"acao={client_health.get('action', 'unknown')} | "
+                f"versao_inicial={client_health.get('initial_version', 'Desconhecida')} | "
+                f"versao_final={client_health.get('final_version', 'Desconhecida')}",
                 status="bootstrap_degraded",
             )
     else:

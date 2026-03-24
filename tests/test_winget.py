@@ -146,6 +146,7 @@ class WinGetManagerCommandTests(unittest.TestCase):
         with patch("subprocess.run") as run_mock:
             run_mock.side_effect = [
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="v1.28.220", stderr=""),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="v1.28.220", stderr=""),
                 subprocess.CalledProcessError(
                     returncode=2316632079,
                     cmd=[],
@@ -161,15 +162,18 @@ class WinGetManagerCommandTests(unittest.TestCase):
                 ),
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="winget source list", stderr=""),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="v1.28.220", stderr=""),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="v1.28.220", stderr=""),
             ]
 
             result = self.manager.ensure_client_ready()
 
         commands = [call.args[0] for call in run_mock.call_args_list]
         self.assertEqual(commands[0], ["winget", "--version"])
-        self.assertEqual(commands[1][1:], ["source", "list", "--disable-interactivity"])
+        self.assertEqual(commands[1], ["winget", "--version"])
+        self.assertEqual(commands[2][1:], ["source", "list", "--disable-interactivity"])
         self.assertEqual(
-            commands[2],
+            commands[3],
             [
                 "powershell.exe",
                 "-NoProfile",
@@ -177,9 +181,10 @@ class WinGetManagerCommandTests(unittest.TestCase):
                 "Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe",
             ],
         )
-        self.assertEqual(commands[3][1:], ["source", "list", "--disable-interactivity"])
+        self.assertEqual(commands[4][1:], ["source", "list", "--disable-interactivity"])
+        self.assertEqual(commands[5][1:], ["--version"])
         self.assertEqual(
-            commands[4],
+            commands[6],
             [
                 "powershell.exe",
                 "-NoProfile",
@@ -191,7 +196,8 @@ class WinGetManagerCommandTests(unittest.TestCase):
                 ),
             ],
         )
-        self.assertEqual(commands[5][1:], ["source", "list", "--disable-interactivity"])
+        self.assertEqual(commands[7][1:], ["source", "list", "--disable-interactivity"])
+        self.assertEqual(commands[8][1:], ["--version"])
         self.assertTrue(result["healthy"])
         self.assertEqual(result["action"], "refreshed_client")
 
@@ -245,16 +251,19 @@ class WinGetManagerCommandTests(unittest.TestCase):
         with patch("subprocess.run") as run_mock:
             run_mock.side_effect = [
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="v1.12.470", stderr=""),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="v1.12.470", stderr=""),
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="winget source list", stderr=""),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="v1.28.220", stderr=""),
             ]
 
             result = self.manager.ensure_client_ready()
 
         commands = [call.args[0] for call in run_mock.call_args_list]
         self.assertEqual(commands[0], ["winget", "--version"])
+        self.assertEqual(commands[1], ["winget", "--version"])
         self.assertEqual(
-            commands[1],
+            commands[2],
             [
                 "powershell.exe",
                 "-NoProfile",
@@ -266,9 +275,23 @@ class WinGetManagerCommandTests(unittest.TestCase):
                 ),
             ],
         )
-        self.assertEqual(commands[2][1:], ["source", "list", "--disable-interactivity"])
+        self.assertEqual(commands[3][1:], ["source", "list", "--disable-interactivity"])
+        self.assertEqual(commands[4][1:], ["--version"])
         self.assertTrue(result["healthy"])
         self.assertEqual(result["action"], "refreshed_outdated_client")
+        self.assertEqual(result["final_version"], "v1.28.220")
+
+    def test_get_windows_diagnostics_infers_windows_11_from_build_when_registry_is_legacy(self):
+        fake_version = type("FakeVersion", (), {"major": 10, "minor": 0, "build": 26200})()
+        with patch("sys.getwindowsversion", return_value=fake_version), patch.object(
+            self.manager,
+            "_read_windows_registry_value",
+            side_effect=["Windows 10 Pro", "25H2", None],
+        ):
+            diagnostics = self.manager.get_windows_diagnostics()
+
+        self.assertEqual(diagnostics["product_name"], "Windows 11 Pro")
+        self.assertEqual(diagnostics["raw_product_name"], "Windows 10 Pro")
 
 
 if __name__ == "__main__":
