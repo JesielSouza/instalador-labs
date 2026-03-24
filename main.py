@@ -652,6 +652,13 @@ def bootstrap(logger):
 
     if winget_state["state"] == "available":
         logger.info(winget_state["reason"], status="bootstrap")
+        proxy_diagnostics = winget.get_proxy_diagnostics()
+        if proxy_diagnostics["active"]:
+            logger.warning(
+                "Proxy detectado no host. O WinGet pode falhar em redes com firewall/proxy corporativo. "
+                + proxy_diagnostics["detail"],
+                status="bootstrap_proxy_detected",
+            )
         client_health = winget.ensure_client_ready()
         if client_health["healthy"]:
             logger.info(client_health["detail"], status="bootstrap")
@@ -955,8 +962,10 @@ def process_package(package, logger, winget, direct_installer, operation: str = 
 
         if package.get("fallback_installer") and _is_retryable_winget_install_failure(install_result):
             winget_failure_diagnostics = _build_winget_failure_diagnostics(install_result)
+            network_guidance = winget.build_network_guidance() if hasattr(winget, "build_network_guidance") else ""
             logger.warning(
-                f"Falha no WinGet para '{package_name}'. Diagnostico: {winget_failure_diagnostics}",
+                f"Falha no WinGet para '{package_name}'. Diagnostico: {winget_failure_diagnostics}"
+                + (f" | {network_guidance}" if network_guidance else ""),
                 status="winget_failure_diagnostics",
                 package_name=package_name,
             )
