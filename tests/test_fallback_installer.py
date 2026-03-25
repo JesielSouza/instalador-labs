@@ -96,7 +96,7 @@ class DirectInstallerManagerTests(unittest.TestCase):
             with patch("utils.fallback_installer.DOWNLOADS_DIR", temp_dir), patch(
                 "urllib.request.urlretrieve",
                 side_effect=ssl.SSLCertVerificationError(1, "certificate verify failed"),
-            ), patch.object(self.manager, "_download_with_powershell") as powershell_download_mock:
+            ), patch.object(DirectInstallerManager, "_download_with_powershell") as powershell_download_mock:
                 def fake_powershell_download(_url, target_path):
                     Path(target_path).write_bytes(b"MZtest")
 
@@ -111,6 +111,33 @@ class DirectInstallerManagerTests(unittest.TestCase):
                 child.unlink(missing_ok=True)
             temp_dir.rmdir()
 
+    def test_download_installer_retries_with_bits_after_powershell_failure(self):
+        logger = FakeLogger()
+        temp_dir = Path(".tmp-test-fallback-bits")
+        temp_dir.mkdir(exist_ok=True)
+        try:
+            with patch("utils.fallback_installer.DOWNLOADS_DIR", temp_dir), patch(
+                "urllib.request.urlretrieve",
+                side_effect=ssl.SSLCertVerificationError(1, "certificate verify failed"),
+            ), patch.object(
+                DirectInstallerManager,
+                "_download_with_powershell",
+                side_effect=RuntimeError("PowerShell falhou"),
+            ), patch.object(DirectInstallerManager, "_download_with_bits") as bits_download_mock:
+                def fake_bits_download(_url, target_path):
+                    Path(target_path).write_bytes(b"MZtest")
+
+                bits_download_mock.side_effect = fake_bits_download
+
+                installer_path = self.manager.download_installer(self.package, logger)
+
+            self.assertEqual(installer_path, temp_dir / "FigmaSetup.exe")
+            self.assertTrue(any(item[1] == "fallback_download_bits_retry" for item in logger.messages))
+        finally:
+            for child in temp_dir.glob("*"):
+                child.unlink(missing_ok=True)
+            temp_dir.rmdir()
+
     def test_install_package_handles_download_failure_without_crashing(self):
         logger = FakeLogger()
         with patch.object(
@@ -119,6 +146,30 @@ class DirectInstallerManagerTests(unittest.TestCase):
             side_effect=RuntimeError("Falha SSL ao baixar arquivo"),
         ):
             result = self.manager.install_package(self.package, logger)
+
+        self.assertFalse(result)
+        self.assertTrue(any(item[0] == "error" for item in logger.messages))
+
+    def test_install_package_fails_when_installer_finishes_without_detecting_software(self):
+        logger = FakeLogger()
+        package = {
+            "software": "Figma",
+            "detect_names": ["Figma"],
+            "fallback_installer": {
+                "download_url": "https://desktop.figma.com/win/FigmaSetup.exe",
+                "file_name": "FigmaSetup.exe",
+                "install_args": ["/S"],
+            },
+        }
+        with patch.object(
+            self.manager,
+            "download_installer",
+            return_value=Path(r"C:\tmp\FigmaSetup.exe"),
+        ), patch.object(self.manager, "is_package_present", return_value=False), patch(
+            "subprocess.run",
+            return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+        ):
+            result = self.manager.install_package(package, logger)
 
         self.assertFalse(result)
         self.assertTrue(any(item[0] == "error" for item in logger.messages))
@@ -153,7 +204,11 @@ class DirectInstallerManagerTests(unittest.TestCase):
             self.manager,
             "download_installer",
             side_effect=[Path(r"C:\tmp\vc_redist.x64.exe"), Path(r"C:\tmp\mysql.msi")],
-        ), patch.object(self.manager, "is_package_present", return_value=False), patch(
+        ), patch.object(
+            self.manager,
+            "is_package_present",
+            side_effect=[False, True, False, True],
+        ), patch(
             "subprocess.run"
         ) as run_mock:
             run_mock.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
@@ -167,6 +222,50 @@ class DirectInstallerManagerTests(unittest.TestCase):
             [r"C:\tmp\vc_redist.x64.exe", "/install", "/quiet", "/norestart"],
         )
         self.assertEqual(commands[1][0:3], ["msiexec.exe", "/i", r"C:\tmp\mysql.msi"])
+
+    def test_install_package_accepts_reboot_required_when_software_is_detected(self):
+        logger = FakeLogger()
+        package = {
+            "software": "MySQL Workbench",
+            "detect_names": ["MySQL Workbench 8.0 CE"],
+            "fallback_installer": {
+                "download_url": "https://example.invalid/mysql.msi",
+                "install_args": ["/qn", "/norestart"],
+            },
+        }
+
+        with patch.object(
+            self.manager,
+            "download_installer",
+            return_value=Path(r"C:\tmp\mysql.msi"),
+        ), patch.object(
+            self.manager,
+            "is_package_present",
+            return_value=True,
+        ), patch(
+            "subprocess.run",
+            side_effect=subprocess.CalledProcessError(
+                returncode=3010,
+                cmd=["msiexec.exe", "/i", r"C:\tmp\mysql.msi", "/qn"],
+                stderr="Restart required",
+            ),
+        ):
+            result = self.manager.install_package(package, logger)
+
+        self.assertTrue(result)
+        self.assertTrue(any(item[1] == "fallback_install_reboot_required" for item in logger.messages))
+
+    def test_format_process_failure_explains_msi_1603(self):
+        error = subprocess.CalledProcessError(
+            returncode=1603,
+            cmd=["msiexec.exe", "/i", r"C:\tmp\mysql.msi", "/qn"],
+            stderr="Fatal error during installation",
+        )
+
+        detail = self.manager._format_process_failure(error)
+
+        self.assertIn("1603", detail)
+        self.assertIn("log MSI detalhado", detail)
 
 
 if __name__ == "__main__":

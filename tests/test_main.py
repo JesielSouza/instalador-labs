@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 if "colorama" not in sys.modules:
     sys.modules["colorama"] = SimpleNamespace(
@@ -39,6 +40,8 @@ class FakeWinget:
         installed=True,
         detected_ids=None,
         install_success_ids=None,
+        install_timeout_ids=None,
+        detect_after_timeout_ids=None,
         upgrade_success_ids=None,
         uninstall_success_ids=None,
         install_failure_detail=None,
@@ -48,6 +51,8 @@ class FakeWinget:
         self.installed = installed
         self.detected_ids = set(detected_ids or [])
         self.install_success_ids = set(install_success_ids or [])
+        self.install_timeout_ids = set(install_timeout_ids or [])
+        self.detect_after_timeout_ids = set(detect_after_timeout_ids or [])
         self.upgrade_success_ids = set(upgrade_success_ids or [])
         self.uninstall_success_ids = set(uninstall_success_ids or [])
         self.install_failure_detail = install_failure_detail or "Falha na instalacao automatizada pelo WinGet."
@@ -55,6 +60,7 @@ class FakeWinget:
         self.uninstall_failure_detail = uninstall_failure_detail or "Falha na desinstalacao automatizada pelo WinGet."
         self.systemic_install_failure = False
         self.systemic_install_failure_diagnostics = ""
+        self.install_requests = []
 
     def is_installed(self):
         return self.installed
@@ -64,6 +70,8 @@ class FakeWinget:
 
     def check_package_status_details(self, package_id):
         found = package_id in self.detected_ids
+        if not found and package_id in self.detect_after_timeout_ids and package_id in self.install_requests:
+            found = True
         return {
             "found": found,
             "detail": "Pacote localizado pelo WinGet antes da operacao." if found else "Pacote nao localizado pelo WinGet antes da operacao.",
@@ -73,6 +81,14 @@ class FakeWinget:
         return package_id in self.install_success_ids
 
     def install_package_details(self, package_id):
+        self.install_requests.append(package_id)
+        if package_id in self.install_timeout_ids:
+            return {
+                "success": False,
+                "detail": "Falha na instalacao do pacote: Comando excedeu o tempo limite de 900s.",
+                "diagnostics": f"comando=winget install --id {package_id} | timeout=900",
+                "timed_out": True,
+            }
         success = package_id in self.install_success_ids
         if not success and "2316632079" in self.install_failure_detail:
             self.systemic_install_failure = True
@@ -83,6 +99,7 @@ class FakeWinget:
             "success": success,
             "detail": "Instalado com sucesso pelo WinGet." if success else self.install_failure_detail,
             "diagnostics": self.systemic_install_failure_diagnostics if not success else "",
+            "timed_out": False,
         }
 
     def upgrade_package(self, package_id):
@@ -339,6 +356,33 @@ class ExecutePackagePlanTests(unittest.TestCase):
         self.assertEqual(results["summary"]["installed"], 1)
         self.assertEqual(results["packages"][0]["install_method"], "fallback_direct_after_winget")
 
+    def test_execute_package_plan_marks_installed_when_winget_times_out_but_package_is_present(self):
+        profile = {
+            "profile": "teste",
+            "description": "timeout do winget com pacote detectado depois",
+            "packages": [
+                {
+                    "software": "VLC media player",
+                    "install_type": "winget",
+                    "winget_id": "VideoLAN.VLC",
+                    "notes": "Pode demorar e exceder o tempo limite do winget.",
+                }
+            ],
+        }
+        logger = FakeLogger()
+        winget = FakeWinget(
+            installed=True,
+            install_timeout_ids={"VideoLAN.VLC"},
+            detect_after_timeout_ids={"VideoLAN.VLC"},
+        )
+        direct_installer = FakeDirectInstaller()
+
+        results = main.execute_package_plan(profile, logger, winget, direct_installer, operation="install")
+
+        self.assertEqual(results["summary"]["installed"], 1)
+        self.assertEqual(results["packages"][0]["status"], "installed")
+        self.assertEqual(results["packages"][0]["install_method"], "winget_timeout_but_present")
+
     def test_execute_package_plan_bypasses_future_winget_installs_after_systemic_failure(self):
         profile = {
             "profile": "teste",
@@ -531,6 +575,128 @@ class ExecutePackagePlanTests(unittest.TestCase):
         self.assertEqual(results["packages"][1]["status"], "not_installed")
         self.assertEqual(results["packages"][2]["status"], "manual")
 
+    def test_execute_package_plan_switches_to_fallback_first_after_systemic_winget_failure(self):
+        profile = {
+            "profile": "teste",
+            "description": "fallback-first apos falha sistemica do winget",
+            "packages": [
+                {
+                    "software": "Primeiro Pacote",
+                    "install_type": "winget",
+                    "winget_id": "Vendor.FailFirst",
+                    "fallback_installer": {"download_url": "https://example.invalid/first.exe", "install_args": ["/quiet"]},
+                },
+                {
+                    "software": "Segundo Pacote",
+                    "install_type": "winget",
+                    "winget_id": "Vendor.FallbackSecond",
+                    "fallback_installer": {"download_url": "https://example.invalid/second.exe", "install_args": ["/quiet"]},
+                },
+            ],
+        }
+        logger = FakeLogger()
+        winget = FakeWinget(
+            installed=True,
+            install_failure_detail="Failed when opening source(s); try the 'source reset' command if the problem persists. codigo 2316632079",
+        )
+        direct_installer = FakeDirectInstaller(install_success_names={"Segundo Pacote"})
+
+        results = main.execute_package_plan(profile, logger, winget, direct_installer, operation="install")
+
+        self.assertEqual(winget.install_requests, ["Vendor.FailFirst"])
+        self.assertEqual(results["packages"][0]["status"], "failed")
+        self.assertEqual(
+            results["packages"][1]["install_method"],
+            "fallback_direct_after_systemic_winget_failure",
+        )
+        self.assertTrue(any(item[1] == "winget_session_degraded" for item in logger.messages))
+
+    def test_load_package_catalog_warns_when_endpoint_diagnostics_find_issues(self):
+        logger = FakeLogger()
+        fake_profile = {
+            "profile": "ads_lab",
+            "description": "perfil de teste",
+            "packages": [
+                {
+                    "software": "Pacote A",
+                    "install_type": "winget",
+                    "winget_id": "Vendor.A",
+                    "fallback_installer": {
+                        "download_url": "http://example.invalid/a.exe",
+                        "file_name": "shared-installer.exe",
+                        "install_args": ["/quiet"],
+                    },
+                },
+                {
+                    "software": "Pacote B",
+                    "install_type": "manual",
+                    "official_download": {
+                        "download_url": "https://example.invalid/b.exe",
+                        "file_name": "shared-installer.exe",
+                    },
+                },
+            ],
+        }
+
+        with patch("main.load_default_package_profile", return_value=fake_profile), patch(
+            "main.select_profile_packages",
+            side_effect=lambda profile, selected: profile,
+        ):
+            profile = main.load_package_catalog(logger)
+
+        self.assertEqual(profile["profile"], "ads_lab")
+        self.assertTrue(any(item[1] == "catalog_endpoint_warning" for item in logger.messages))
+
+    def test_load_package_catalog_warns_when_endpoint_connectivity_fails(self):
+        logger = FakeLogger()
+        fake_profile = {
+            "profile": "ads_lab",
+            "description": "perfil de teste",
+            "packages": [
+                {
+                    "software": "Pacote A",
+                    "install_type": "winget",
+                    "winget_id": "Vendor.A",
+                    "fallback_installer": {
+                        "download_url": "https://example.invalid/a.exe",
+                        "file_name": "a.exe",
+                        "install_args": ["/quiet"],
+                    },
+                }
+            ],
+        }
+
+        with patch("main.load_default_package_profile", return_value=fake_profile), patch(
+            "main.select_profile_packages",
+            side_effect=lambda profile, selected: profile,
+        ), patch(
+            "main.probe_catalog_endpoint_connectivity",
+            return_value={
+                "detail": "Diagnostico de conectividade dos endpoints: hosts_testados=1 | hosts_ok=0 | falhas=1",
+                "issues": ["example.invalid: falha no teste HEAD (Timeout)"],
+                "probes": [],
+            },
+        ):
+            profile = main.load_package_catalog(logger)
+
+        self.assertEqual(profile["profile"], "ads_lab")
+        self.assertTrue(any(item[1] == "catalog_connectivity_warning" for item in logger.messages))
+
+    def test_load_package_catalog_accepts_custom_dynamic_packages(self):
+        logger = FakeLogger()
+
+        profile = main.load_package_catalog(
+            logger,
+            custom_packages=[
+                {"software": "Visual Studio Code", "winget_id": "Microsoft.VisualStudioCode"},
+                {"software": "Python 3.12", "winget_id": "Python.Python.3.12"},
+            ],
+        )
+
+        self.assertEqual(profile["profile"], "dynamic_winget")
+        self.assertEqual(len(profile["packages"]), 2)
+        self.assertEqual(profile["packages"][0]["winget_id"], "Microsoft.VisualStudioCode")
+
 
 class WriteExecutionReportTests(unittest.TestCase):
     def test_write_execution_report_includes_operation_and_catalog_notes(self):
@@ -565,9 +731,11 @@ class WriteExecutionReportTests(unittest.TestCase):
         }
         logger = FakeLogger()
 
-        with tempfile.TemporaryDirectory() as temp_dir:
+        temp_dir = Path(".tmp-test-report-dir")
+        temp_dir.mkdir(exist_ok=True)
+        try:
             original_reports_dir = main.REPORTS_DIR
-            main.REPORTS_DIR = Path(temp_dir)
+            main.REPORTS_DIR = temp_dir
             try:
                 report_path = main.write_execution_report(profile, results, logger)
             finally:
@@ -575,6 +743,10 @@ class WriteExecutionReportTests(unittest.TestCase):
 
             with report_path.open("r", encoding="utf-8", newline="") as report_file:
                 rows = list(csv.reader(report_file))
+        finally:
+            for child in temp_dir.glob("*"):
+                child.unlink(missing_ok=True)
+            temp_dir.rmdir()
 
         self.assertIn(["summary", "operation", "install"], rows)
         package_header = [
@@ -582,6 +754,7 @@ class WriteExecutionReportTests(unittest.TestCase):
             "software",
             "operation",
             "status",
+            "diagnostic_category",
             "install_method",
             "install_type",
             "winget_id",
@@ -594,8 +767,31 @@ class WriteExecutionReportTests(unittest.TestCase):
 
         self.assertEqual(package_row[1], "Astah Community")
         self.assertEqual(package_row[2], "install")
-        self.assertEqual(package_row[7], "Licenca estudantil; requer intervencao manual.")
-        self.assertEqual(package_row[8], "https://astah.net/products/astah-community/")
+        self.assertEqual(package_row[4], "manual_action_required")
+        self.assertEqual(package_row[8], "Licenca estudantil; requer intervencao manual.")
+        self.assertEqual(package_row[9], "https://astah.net/products/astah-community/")
+
+    def test_classify_package_result_maps_common_lab_failures(self):
+        self.assertEqual(
+            main.classify_package_result(
+                {
+                    "status": "failed",
+                    "install_method": "winget",
+                    "detail": "Failed when opening source(s); codigo 2316632079",
+                }
+            ),
+            "failed_winget_source",
+        )
+        self.assertEqual(
+            main.classify_package_result(
+                {
+                    "status": "failed",
+                    "install_method": "fallback_direct_after_winget",
+                    "detail": "MSI retornou 1603 durante a execucao",
+                }
+            ),
+            "failed_msi_1603",
+        )
 
 
 class OperatorSummaryTests(unittest.TestCase):
@@ -625,8 +821,356 @@ class OperatorSummaryTests(unittest.TestCase):
         self.assertIn("Manuais: 1", summary_text)
         self.assertIn("Atencao: existe item que requer acao manual.", summary_text)
         self.assertIn("Itens manuais: Astah Community", summary_text)
+        self.assertIn("Diagnostico dominante da execucao:", summary_text)
         self.assertIn(str(report_path), summary_text)
         self.assertIn(str(log_path), summary_text)
+
+    def test_summarize_execution_diagnostics_groups_common_failures(self):
+        results = {
+            "packages": [
+                {"package": "Python 3.12", "status": "failed", "install_method": "winget", "detail": "certificate_verify_failed"},
+                {"package": "MySQL Workbench", "status": "failed", "install_method": "fallback_direct_after_winget", "detail": "MSI retornou 1603"},
+                {"package": "Visual Studio Code", "status": "blocked", "install_method": "blocked_no_winget", "detail": "Sem WinGet"},
+                {"package": "Figma", "status": "installed", "install_method": "fallback_direct_after_winget", "detail": "Instalado via fallback"},
+            ]
+        }
+
+        diagnostics = main.summarize_execution_diagnostics(results)
+
+        self.assertEqual(diagnostics["counts"]["network_or_policy"], 1)
+        self.assertEqual(diagnostics["counts"]["msi_or_prerequisite"], 1)
+        self.assertEqual(diagnostics["counts"]["winget"], 1)
+        self.assertEqual(diagnostics["counts"]["fallback"], 1)
+        self.assertIn("Diagnostico dominante da execucao:", diagnostics["detail"])
+
+
+class BootstrapDiagnosticsTests(unittest.TestCase):
+    def test_bootstrap_warns_when_pending_reboot_is_detected(self):
+        logger = FakeLogger()
+        fake_winget = SimpleNamespace(
+            classify_winget_state=lambda: {
+                "state": "available",
+                "reason": "WinGet disponivel: v1.28.220",
+                "diagnostics": {
+                    "product_name": "Windows 11 Pro",
+                    "raw_product_name": "Windows 10 Pro",
+                    "display_version": "25H2",
+                    "build": 26200,
+                },
+            },
+            executable=r"C:\Users\Administrator\AppData\Local\Microsoft\WindowsApps\winget.EXE",
+            get_version=lambda: "v1.28.220",
+            get_proxy_diagnostics=lambda: {"active": False, "detail": ""},
+            get_store_stack_diagnostics=lambda: {"detail": "Stack Store/App Installer: ok", "issues": []},
+            get_store_policy_diagnostics=lambda: {"detail": "Diagnostico de politicas Store/App Installer: ok", "issues": []},
+            get_execution_alias_diagnostics=lambda: {"detail": "Diagnostico de alias/executavel do WinGet: ok", "issues": []},
+            get_source_catalog_diagnostics=lambda: {"detail": "Diagnostico de sources do WinGet: ok", "issues": []},
+            get_windows_update_diagnostics=lambda: {"detail": "Diagnostico Windows Update: ok", "issues": []},
+            get_windows_security_diagnostics=lambda: {"detail": "Diagnostico de seguranca do Windows: ok", "issues": []},
+            ensure_client_ready=lambda: {
+                "healthy": True,
+                "detail": "Cliente do WinGet respondeu normalmente ao listar as fontes.",
+                "action": "none",
+                "initial_version": "v1.28.220",
+                "final_version": "v1.28.220",
+            },
+        )
+        fake_direct_installer = object()
+
+        with patch("main.is_admin", return_value=True), patch(
+            "main.get_pending_reboot_diagnostics",
+            return_value={"active": True, "signals": ["CBS/RebootPending"], "detail": "CBS/RebootPending"},
+        ), patch(
+            "main.get_host_capacity_diagnostics",
+            return_value={"detail": "Diagnostico de host: ok", "issues": []},
+        ), patch(
+            "main.get_runtime_directory_diagnostics",
+            return_value={"detail": "Diagnostico de diretorios: ok", "issues": []},
+        ), patch("main.WinGetManager", return_value=fake_winget), patch(
+            "main.DirectInstallerManager",
+            return_value=fake_direct_installer,
+        ):
+            winget, direct_installer = main.bootstrap(logger)
+
+        self.assertIs(winget, fake_winget)
+        self.assertIs(direct_installer, fake_direct_installer)
+        self.assertTrue(any(item[1] == "bootstrap_reboot_pending" for item in logger.messages))
+
+    def test_bootstrap_warns_when_store_stack_or_windows_update_have_issues(self):
+        logger = FakeLogger()
+        fake_winget = SimpleNamespace(
+            classify_winget_state=lambda: {
+                "state": "available",
+                "reason": "WinGet disponivel: v1.28.220",
+                "diagnostics": {
+                    "product_name": "Windows 11 Pro",
+                    "raw_product_name": "Windows 10 Pro",
+                    "display_version": "25H2",
+                    "build": 26200,
+                },
+            },
+            executable=r"C:\Users\Administrator\AppData\Local\Microsoft\WindowsApps\winget.EXE",
+            get_version=lambda: "v1.28.220",
+            get_proxy_diagnostics=lambda: {"active": False, "detail": ""},
+            get_store_stack_diagnostics=lambda: {
+                "detail": "Stack Store/App Installer: AppInstaller=ausente | Store=ausente",
+                "issues": ["App Installer ausente", "Microsoft Store ausente"],
+            },
+            get_store_policy_diagnostics=lambda: {
+                "detail": "Diagnostico de politicas Store/App Installer: ok",
+                "issues": [],
+            },
+            get_execution_alias_diagnostics=lambda: {
+                "detail": "Diagnostico de alias/executavel do WinGet: ok",
+                "issues": [],
+            },
+            get_source_catalog_diagnostics=lambda: {
+                "detail": "Diagnostico de sources do WinGet: ok",
+                "issues": [],
+            },
+            get_windows_update_diagnostics=lambda: {
+                "detail": "Diagnostico Windows Update: reboot_required=sim",
+                "issues": ["Windows Update com reboot pendente", "BITS desabilitado"],
+            },
+            get_windows_security_diagnostics=lambda: {"detail": "Diagnostico de seguranca do Windows: ok", "issues": []},
+            ensure_client_ready=lambda: {
+                "healthy": True,
+                "detail": "Cliente do WinGet respondeu normalmente ao listar as fontes.",
+                "action": "none",
+                "initial_version": "v1.28.220",
+                "final_version": "v1.28.220",
+            },
+        )
+
+        with patch("main.is_admin", return_value=True), patch(
+            "main.get_pending_reboot_diagnostics",
+            return_value={"active": False, "signals": [], "detail": "Nenhum indicio."},
+        ), patch(
+            "main.get_host_capacity_diagnostics",
+            return_value={"detail": "Diagnostico de host: ok", "issues": []},
+        ), patch(
+            "main.get_runtime_directory_diagnostics",
+            return_value={"detail": "Diagnostico de diretorios: ok", "issues": []},
+        ), patch("main.WinGetManager", return_value=fake_winget), patch(
+            "main.DirectInstallerManager",
+            return_value=object(),
+        ):
+            main.bootstrap(logger)
+
+        self.assertTrue(any(item[1] == "bootstrap_store_stack_warning" for item in logger.messages))
+        self.assertTrue(any(item[1] == "bootstrap_windows_update_warning" for item in logger.messages))
+
+    def test_bootstrap_warns_when_host_capacity_has_issues(self):
+        logger = FakeLogger()
+        fake_winget = SimpleNamespace(
+            classify_winget_state=lambda: {
+                "state": "available",
+                "reason": "WinGet disponivel: v1.28.220",
+                "diagnostics": {
+                    "product_name": "Windows 11 Pro",
+                    "raw_product_name": "Windows 10 Pro",
+                    "display_version": "25H2",
+                    "build": 26200,
+                },
+            },
+            executable=r"C:\Users\Administrator\AppData\Local\Microsoft\WindowsApps\winget.EXE",
+            get_version=lambda: "v1.28.220",
+            get_proxy_diagnostics=lambda: {"active": False, "detail": ""},
+            get_store_stack_diagnostics=lambda: {"detail": "Stack Store/App Installer: ok", "issues": []},
+            get_store_policy_diagnostics=lambda: {"detail": "Diagnostico de politicas Store/App Installer: ok", "issues": []},
+            get_execution_alias_diagnostics=lambda: {"detail": "Diagnostico de alias/executavel do WinGet: ok", "issues": []},
+            get_source_catalog_diagnostics=lambda: {"detail": "Diagnostico de sources do WinGet: ok", "issues": []},
+            get_windows_update_diagnostics=lambda: {"detail": "Diagnostico Windows Update: ok", "issues": []},
+            get_windows_security_diagnostics=lambda: {"detail": "Diagnostico de seguranca do Windows: ok", "issues": []},
+            ensure_client_ready=lambda: {
+                "healthy": True,
+                "detail": "Cliente do WinGet respondeu normalmente ao listar as fontes.",
+                "action": "none",
+                "initial_version": "v1.28.220",
+                "final_version": "v1.28.220",
+            },
+        )
+
+        with patch("main.is_admin", return_value=True), patch(
+            "main.get_pending_reboot_diagnostics",
+            return_value={"active": False, "signals": [], "detail": "Nenhum indicio."},
+        ), patch(
+            "main.get_host_capacity_diagnostics",
+            return_value={
+                "detail": "Diagnostico de host: arquitetura=x86 | espaco_livre_C:\\=3.2 GB",
+                "issues": ["Arquitetura nao x64 detectada: x86", "Pouco espaco livre em C:\\: 3.2 GB"],
+            },
+        ), patch(
+            "main.get_runtime_directory_diagnostics",
+            return_value={"detail": "Diagnostico de diretorios: ok", "issues": []},
+        ), patch("main.WinGetManager", return_value=fake_winget), patch(
+            "main.DirectInstallerManager",
+            return_value=object(),
+        ):
+            main.bootstrap(logger)
+
+        self.assertTrue(any(item[1] == "bootstrap_host_capacity_warning" for item in logger.messages))
+
+    def test_bootstrap_warns_when_policy_alias_or_source_diagnostics_have_issues(self):
+        logger = FakeLogger()
+        fake_winget = SimpleNamespace(
+            classify_winget_state=lambda: {
+                "state": "available",
+                "reason": "WinGet disponivel: v1.28.220",
+                "diagnostics": {
+                    "product_name": "Windows 11 Pro",
+                    "raw_product_name": "Windows 10 Pro",
+                    "display_version": "25H2",
+                    "build": 26200,
+                },
+            },
+            executable=r"C:\Users\Administrator\AppData\Local\Microsoft\WindowsApps\winget.EXE",
+            get_version=lambda: "v1.28.220",
+            get_proxy_diagnostics=lambda: {"active": False, "detail": ""},
+            get_store_stack_diagnostics=lambda: {"detail": "Stack Store/App Installer: ok", "issues": []},
+            get_store_policy_diagnostics=lambda: {
+                "detail": "Diagnostico de politicas Store/App Installer: RemoveWindowsStore=1",
+                "issues": ["Politica RemoveWindowsStore ativa"],
+            },
+            get_execution_alias_diagnostics=lambda: {
+                "detail": "Diagnostico de alias/executavel do WinGet: caminho=... | existe=nao",
+                "issues": ["Executavel resolvido do winget nao existe em disco: C:\\x\\winget.exe"],
+            },
+            get_source_catalog_diagnostics=lambda: {
+                "detail": "Diagnostico de sources do WinGet: winget=ausente | msstore=ausente",
+                "issues": ["Source 'winget' ausente na configuracao do cliente"],
+            },
+            get_windows_update_diagnostics=lambda: {"detail": "Diagnostico Windows Update: ok", "issues": []},
+            get_windows_security_diagnostics=lambda: {"detail": "Diagnostico de seguranca do Windows: ok", "issues": []},
+            ensure_client_ready=lambda: {
+                "healthy": True,
+                "detail": "Cliente do WinGet respondeu normalmente ao listar as fontes.",
+                "action": "none",
+                "initial_version": "v1.28.220",
+                "final_version": "v1.28.220",
+            },
+        )
+
+        with patch("main.is_admin", return_value=True), patch(
+            "main.get_pending_reboot_diagnostics",
+            return_value={"active": False, "signals": [], "detail": "Nenhum indicio."},
+        ), patch(
+            "main.get_host_capacity_diagnostics",
+            return_value={"detail": "Diagnostico de host: ok", "issues": []},
+        ), patch(
+            "main.get_runtime_directory_diagnostics",
+            return_value={"detail": "Diagnostico de diretorios: ok", "issues": []},
+        ), patch("main.WinGetManager", return_value=fake_winget), patch(
+            "main.DirectInstallerManager",
+            return_value=object(),
+        ):
+            main.bootstrap(logger)
+
+        self.assertTrue(any(item[1] == "bootstrap_store_policy_warning" for item in logger.messages))
+        self.assertTrue(any(item[1] == "bootstrap_winget_alias_warning" for item in logger.messages))
+        self.assertTrue(any(item[1] == "bootstrap_winget_sources_warning" for item in logger.messages))
+
+    def test_bootstrap_warns_when_runtime_directories_are_not_writable(self):
+        logger = FakeLogger()
+        fake_winget = SimpleNamespace(
+            classify_winget_state=lambda: {
+                "state": "available",
+                "reason": "WinGet disponivel: v1.28.220",
+                "diagnostics": {
+                    "product_name": "Windows 11 Pro",
+                    "raw_product_name": "Windows 10 Pro",
+                    "display_version": "25H2",
+                    "build": 26200,
+                },
+            },
+            executable=r"C:\Users\Administrator\AppData\Local\Microsoft\WindowsApps\winget.EXE",
+            get_version=lambda: "v1.28.220",
+            get_proxy_diagnostics=lambda: {"active": False, "detail": ""},
+            get_store_stack_diagnostics=lambda: {"detail": "Stack Store/App Installer: ok", "issues": []},
+            get_store_policy_diagnostics=lambda: {"detail": "Diagnostico de politicas Store/App Installer: ok", "issues": []},
+            get_execution_alias_diagnostics=lambda: {"detail": "Diagnostico de alias/executavel do WinGet: ok", "issues": []},
+            get_source_catalog_diagnostics=lambda: {"detail": "Diagnostico de sources do WinGet: ok", "issues": []},
+            get_windows_update_diagnostics=lambda: {"detail": "Diagnostico Windows Update: ok", "issues": []},
+            get_windows_security_diagnostics=lambda: {"detail": "Diagnostico de seguranca do Windows: ok", "issues": []},
+            ensure_client_ready=lambda: {
+                "healthy": True,
+                "detail": "Cliente do WinGet respondeu normalmente ao listar as fontes.",
+                "action": "none",
+                "initial_version": "v1.28.220",
+                "final_version": "v1.28.220",
+            },
+        )
+
+        with patch("main.is_admin", return_value=True), patch(
+            "main.get_pending_reboot_diagnostics",
+            return_value={"active": False, "signals": [], "detail": "Nenhum indicio."},
+        ), patch(
+            "main.get_host_capacity_diagnostics",
+            return_value={"detail": "Diagnostico de host: ok", "issues": []},
+        ), patch(
+            "main.get_runtime_directory_diagnostics",
+            return_value={
+                "detail": "Diagnostico de diretorios: downloads=C:\\tmp (erro: acesso negado)",
+                "issues": ["downloads sem escrita: C:\\tmp"],
+            },
+        ), patch("main.WinGetManager", return_value=fake_winget), patch(
+            "main.DirectInstallerManager",
+            return_value=object(),
+        ):
+            main.bootstrap(logger)
+
+        self.assertTrue(any(item[1] == "bootstrap_runtime_dirs_warning" for item in logger.messages))
+
+    def test_bootstrap_warns_when_windows_security_has_issues(self):
+        logger = FakeLogger()
+        fake_winget = SimpleNamespace(
+            classify_winget_state=lambda: {
+                "state": "available",
+                "reason": "WinGet disponivel: v1.28.220",
+                "diagnostics": {
+                    "product_name": "Windows 11 Pro",
+                    "raw_product_name": "Windows 10 Pro",
+                    "display_version": "25H2",
+                    "build": 26200,
+                },
+            },
+            executable=r"C:\Users\Administrator\AppData\Local\Microsoft\WindowsApps\winget.EXE",
+            get_version=lambda: "v1.28.220",
+            get_proxy_diagnostics=lambda: {"active": False, "detail": ""},
+            get_store_stack_diagnostics=lambda: {"detail": "Stack Store/App Installer: ok", "issues": []},
+            get_store_policy_diagnostics=lambda: {"detail": "Diagnostico de politicas Store/App Installer: ok", "issues": []},
+            get_execution_alias_diagnostics=lambda: {"detail": "Diagnostico de alias/executavel do WinGet: ok", "issues": []},
+            get_source_catalog_diagnostics=lambda: {"detail": "Diagnostico de sources do WinGet: ok", "issues": []},
+            get_windows_update_diagnostics=lambda: {"detail": "Diagnostico Windows Update: ok", "issues": []},
+            get_windows_security_diagnostics=lambda: {
+                "detail": "Diagnostico de seguranca do Windows: EnableSmartScreen=0",
+                "issues": ["Politica EnableSmartScreen desabilitada", "Servico WinDefend desabilitado"],
+            },
+            ensure_client_ready=lambda: {
+                "healthy": True,
+                "detail": "Cliente do WinGet respondeu normalmente ao listar as fontes.",
+                "action": "none",
+                "initial_version": "v1.28.220",
+                "final_version": "v1.28.220",
+            },
+        )
+
+        with patch("main.is_admin", return_value=True), patch(
+            "main.get_pending_reboot_diagnostics",
+            return_value={"active": False, "signals": [], "detail": "Nenhum indicio."},
+        ), patch(
+            "main.get_host_capacity_diagnostics",
+            return_value={"detail": "Diagnostico de host: ok", "issues": []},
+        ), patch(
+            "main.get_runtime_directory_diagnostics",
+            return_value={"detail": "Diagnostico de diretorios: ok", "issues": []},
+        ), patch("main.WinGetManager", return_value=fake_winget), patch(
+            "main.DirectInstallerManager",
+            return_value=object(),
+        ):
+            main.bootstrap(logger)
+
+        self.assertTrue(any(item[1] == "bootstrap_windows_security_warning" for item in logger.messages))
 
 
 if __name__ == "__main__":

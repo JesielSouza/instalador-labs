@@ -80,7 +80,7 @@ class DirectInstallerManager:
                     status="fallback_download_ssl_retry",
                     package_name=package["software"],
                 )
-                self._download_with_powershell(download_url, target_path)
+                self._download_with_windows_downloaders(download_url, target_path, package, logger)
             else:
                 raise RuntimeError(f"Falha ao baixar '{package['software']}': {error}") from error
         self._ensure_valid_installer_file(target_path)
@@ -92,6 +92,7 @@ class DirectInstallerManager:
 
     def install_package(self, package: dict, logger) -> bool:
         """Executa o fallback por instalador direto."""
+        command = []
         try:
             if not self._install_prerequisites(package, logger):
                 return False
@@ -107,12 +108,25 @@ class DirectInstallerManager:
 
             command = self._build_install_command(installer_path, install_args)
             subprocess.run(command, check=True, capture_output=True, text=True)
+            if package.get("detect_names") and not self.is_package_present(package):
+                raise RuntimeError(
+                    f"Instalador de '{package['software']}' terminou sem registrar o software no host."
+                )
             return True
         except subprocess.CalledProcessError as error:
+            if self._is_reboot_required_exit_code(error.returncode) and package.get("detect_names") and self.is_package_present(package):
+                logger.warning(
+                    f"Instalador de '{package['software']}' concluiu com solicitacao de reinicializacao "
+                    f"(codigo {error.returncode}), mas o software ja esta presente no host.",
+                    status="fallback_install_reboot_required",
+                    package_name=package["software"],
+                )
+                return True
+
             msi_log_hint = self._extract_msi_log_hint(command)
             logger.error(
                 f"Falha no fallback direto de '{package['software']}': "
-                f"{error.stderr.strip() or error.stdout.strip() or error}"
+                f"{self._format_process_failure(error)}"
                 + (f" | Log MSI: {msi_log_hint}" if msi_log_hint else ""),
                 status="fallback_install_error",
                 package_name=package["software"],
@@ -213,6 +227,32 @@ class DirectInstallerManager:
         return ""
 
     @staticmethod
+    def _is_reboot_required_exit_code(return_code: int) -> bool:
+        return return_code in (1641, 3010)
+
+    @classmethod
+    def _format_process_failure(cls, error: subprocess.CalledProcessError) -> str:
+        output = error.stderr.strip() or error.stdout.strip()
+        if output:
+            base = output
+        else:
+            base = str(error)
+
+        if cls._is_reboot_required_exit_code(error.returncode):
+            return (
+                f"{base} | Instalador solicitou reinicializacao "
+                f"(codigo {error.returncode})."
+            )
+
+        if error.returncode == 1603:
+            return (
+                f"{base} | MSI retornou 1603 (falha fatal). "
+                "Verifique reboot pendente, pre-requisitos e o log MSI detalhado."
+            )
+
+        return base
+
+    @staticmethod
     def _looks_like_ssl_certificate_error(error: Exception) -> bool:
         if isinstance(error, ssl.SSLError):
             return True
@@ -231,10 +271,49 @@ class DirectInstallerManager:
             "powershell.exe",
             "-NoProfile",
             "-Command",
-            f"Invoke-WebRequest -Uri '{safe_url}' -OutFile '{safe_target}'",
+            f"Invoke-WebRequest -UseBasicParsing -Uri '{safe_url}' -OutFile '{safe_target}'",
         ]
         try:
             subprocess.run(command, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as error:
             message = error.stderr.strip() or error.stdout.strip() or str(error)
             raise RuntimeError(f"Falha no download via PowerShell/WinHTTP: {message}") from error
+
+    @classmethod
+    def _download_with_windows_downloaders(cls, download_url: str, target_path: Path, package: dict, logger) -> None:
+        try:
+            cls._download_with_powershell(download_url, target_path)
+            return
+        except RuntimeError as powershell_error:
+            logger.warning(
+                f"PowerShell/WinHTTP falhou ao baixar '{package['software']}'. Tentando BITS.",
+                status="fallback_download_bits_retry",
+                package_name=package["software"],
+            )
+            try:
+                cls._download_with_bits(download_url, target_path)
+                return
+            except RuntimeError as bits_error:
+                raise RuntimeError(
+                    f"Falha ao baixar '{package['software']}' mesmo apos retry Windows. "
+                    f"PowerShell/WinHTTP: {powershell_error} | BITS: {bits_error}"
+                ) from bits_error
+
+    @staticmethod
+    def _download_with_bits(download_url: str, target_path: Path) -> None:
+        safe_url = download_url.replace("'", "''")
+        safe_target = str(target_path).replace("'", "''")
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-Command",
+            (
+                f"Start-BitsTransfer -Source '{safe_url}' -Destination '{safe_target}' "
+                "-TransferType Download -ErrorAction Stop"
+            ),
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as error:
+            message = error.stderr.strip() or error.stdout.strip() or str(error)
+            raise RuntimeError(f"Falha no download via BITS: {message}") from error

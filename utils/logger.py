@@ -4,7 +4,23 @@ import socket
 from datetime import datetime
 from pathlib import Path
 
-from colorama import Fore, Style, init
+try:
+    from colorama import Fore, Style, init
+except ModuleNotFoundError:
+    class _PlainColor:
+        GREEN = ""
+        YELLOW = ""
+        RED = ""
+        CYAN = ""
+
+    class _PlainStyle:
+        RESET_ALL = ""
+
+    Fore = _PlainColor()
+    Style = _PlainStyle()
+
+    def init(autoreset=True):
+        return None
 
 from config import LOGS_DIR
 
@@ -79,6 +95,10 @@ class LabLogger:
         self._emit(logging.ERROR, "[ERROR]", Fore.RED, message, status, package_name)
 
     def success(self, package_name, status="success"):
-        """Helper especifico para sucesso de instalacao."""
-        msg = f"Sucesso: {package_name} instalado/validado."
+        """Helper especifico para sucesso de operacoes do pacote."""
+        success_messages = {
+            "updated": f"Sucesso: {package_name} atualizado/validado.",
+            "removed": f"Sucesso: {package_name} removido/validado.",
+        }
+        msg = success_messages.get(status, f"Sucesso: {package_name} instalado/validado.")
         self._emit(logging.INFO, "[OK]", Fore.CYAN, msg, status, package_name)

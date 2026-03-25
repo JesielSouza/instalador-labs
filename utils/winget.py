@@ -1,3 +1,6 @@
+import json
+import locale
+import re
 import shutil
 import subprocess
 import sys
@@ -5,6 +8,7 @@ import time
 import os
 import unicodedata
 import winreg
+from pathlib import Path
 
 from config import resolve_winget_executable
 
@@ -19,6 +23,8 @@ class WinGetManager:
         self.executable = shutil.which("winget") or resolve_winget_executable()
         self.default_source = "winget"
         self.minimum_preferred_version = (1, 28, 0)
+        self.package_operation_timeout_seconds = 900
+        self.metadata_operation_timeout_seconds = 120
         self.systemic_install_failure = False
         self.systemic_install_failure_diagnostics = ""
         self.source_repair_error_markers = (
@@ -161,6 +167,232 @@ class WinGetManager:
             )
         return "Sem indicio local de proxy; se a falha persistir, valide regras de firewall/proxy da rede."
 
+    def get_store_stack_diagnostics(self) -> dict:
+        """Diagnostica a presenca do App Installer e da Microsoft Store."""
+        app_installer = self.get_appx_package_details("Microsoft.DesktopAppInstaller")
+        store = self.get_appx_package_details("Microsoft.WindowsStore")
+        appx_service = self.get_service_details("AppXSvc")
+        clip_service = self.get_service_details("ClipSVC")
+        install_service = self.get_service_details("InstallService")
+
+        issues = []
+        if not app_installer["installed"]:
+            issues.append("App Installer ausente")
+        if not store["installed"]:
+            issues.append("Microsoft Store ausente")
+        for label, service in (
+            ("AppXSvc", appx_service),
+            ("ClipSVC", clip_service),
+            ("InstallService", install_service),
+        ):
+            if not service.get("available"):
+                issues.append(f"{label} indisponivel")
+            elif service.get("start_mode", "").lower() == "disabled":
+                issues.append(f"{label} desabilitado")
+
+        detail = (
+            "Stack Store/App Installer: "
+            f"AppInstaller={'presente' if app_installer['installed'] else 'ausente'}"
+            + (f" ({app_installer['version']})" if app_installer.get("version") else "")
+            + " | "
+            f"Store={'presente' if store['installed'] else 'ausente'}"
+            + (f" ({store['version']})" if store.get("version") else "")
+            + " | "
+            + f"AppXSvc={self._format_service_detail(appx_service)}"
+            + " | "
+            + f"ClipSVC={self._format_service_detail(clip_service)}"
+            + " | "
+            + f"InstallService={self._format_service_detail(install_service)}"
+            + f" | winget_executavel={self.executable or 'nao localizado'}"
+        )
+        return {
+            "app_installer": app_installer,
+            "store": store,
+            "services": {
+                "AppXSvc": appx_service,
+                "ClipSVC": clip_service,
+                "InstallService": install_service,
+            },
+            "issues": issues,
+            "detail": detail,
+        }
+
+    def get_windows_update_diagnostics(self) -> dict:
+        """Coleta sinais locais de Windows Update pendente ou servicos essenciais indisponiveis."""
+        pending_update = self._read_registry_key_exists(
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"
+        )
+        uso_service = self.get_service_details("UsoSvc")
+        wu_service = self.get_service_details("wuauserv")
+        bits_service = self.get_service_details("BITS")
+
+        issues = []
+        if pending_update:
+            issues.append("Windows Update com reboot pendente")
+        for label, service in (
+            ("UsoSvc", uso_service),
+            ("wuauserv", wu_service),
+            ("BITS", bits_service),
+        ):
+            if service.get("available") and service.get("start_mode", "").lower() == "disabled":
+                issues.append(f"{label} desabilitado")
+
+        detail = (
+            "Diagnostico Windows Update: "
+            f"reboot_required={'sim' if pending_update else 'nao'} | "
+            f"UsoSvc={self._format_service_detail(uso_service)} | "
+            f"wuauserv={self._format_service_detail(wu_service)} | "
+            f"BITS={self._format_service_detail(bits_service)}"
+        )
+        return {
+            "pending_update": pending_update,
+            "services": {
+                "UsoSvc": uso_service,
+                "wuauserv": wu_service,
+                "BITS": bits_service,
+            },
+            "issues": issues,
+            "detail": detail,
+        }
+
+    def get_execution_alias_diagnostics(self) -> dict:
+        """Diagnostica o caminho resolvido do winget e possiveis problemas de alias."""
+        executable_path = self.executable or ""
+        executable_exists = bool(executable_path) and Path(executable_path).exists()
+        uses_windowsapps_alias = "windowsapps" in executable_path.lower()
+
+        issues = []
+        if not executable_path:
+            issues.append("Executavel do winget nao resolvido")
+        elif not executable_exists:
+            issues.append(f"Executavel resolvido do winget nao existe em disco: {executable_path}")
+
+        detail = (
+            "Diagnostico de alias/executavel do WinGet: "
+            f"caminho={executable_path or 'nao localizado'} | "
+            f"existe={'sim' if executable_exists else 'nao'} | "
+            f"windowsapps_alias={'sim' if uses_windowsapps_alias else 'nao'}"
+        )
+        return {
+            "path": executable_path,
+            "exists": executable_exists,
+            "uses_windowsapps_alias": uses_windowsapps_alias,
+            "issues": issues,
+            "detail": detail,
+        }
+
+    def get_source_catalog_diagnostics(self) -> dict:
+        """Coleta o estado das sources conhecidas do WinGet."""
+        result = self._run_winget_command(["source", "list", "--disable-interactivity"])
+        normalized_output = self._normalize_text(" ".join((result.get("stdout") or "").split()))
+        winget_source_present = "winget" in normalized_output
+        msstore_source_present = "msstore" in normalized_output
+
+        issues = []
+        if not result["success"]:
+            issues.append("Falha ao listar as sources do WinGet")
+        elif not winget_source_present:
+            issues.append("Source 'winget' ausente na configuracao do cliente")
+
+        detail = (
+            "Diagnostico de sources do WinGet: "
+            f"winget={'presente' if winget_source_present else 'ausente'} | "
+            f"msstore={'presente' if msstore_source_present else 'ausente'}"
+        )
+        if result.get("stderr"):
+            detail += f" | stderr={' '.join(result['stderr'].split())}"
+
+        return {
+            "success": result["success"],
+            "winget_source_present": winget_source_present,
+            "msstore_source_present": msstore_source_present,
+            "issues": issues,
+            "detail": detail,
+        }
+
+    def get_store_policy_diagnostics(self) -> dict:
+        """Coleta sinais de politicas que podem afetar Store/App Installer."""
+        remove_store = self._read_registry_dword(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Policies\Microsoft\WindowsStore",
+            "RemoveWindowsStore",
+        )
+        disable_store_apps = self._read_registry_dword(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Policies\Microsoft\WindowsStore",
+            "DisableStoreApps",
+        )
+        enable_app_installer = self._read_registry_dword(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Policies\Microsoft\Windows\AppInstaller",
+            "EnableAppInstaller",
+        )
+
+        issues = []
+        if remove_store == 1:
+            issues.append("Politica RemoveWindowsStore ativa")
+        if disable_store_apps == 1:
+            issues.append("Politica DisableStoreApps ativa")
+        if enable_app_installer == 0:
+            issues.append("Politica EnableAppInstaller desabilitada")
+
+        detail = (
+            "Diagnostico de politicas Store/App Installer: "
+            f"RemoveWindowsStore={remove_store if remove_store is not None else 'nao_configurado'} | "
+            f"DisableStoreApps={disable_store_apps if disable_store_apps is not None else 'nao_configurado'} | "
+            f"EnableAppInstaller={enable_app_installer if enable_app_installer is not None else 'nao_configurado'}"
+        )
+        return {
+            "remove_store": remove_store,
+            "disable_store_apps": disable_store_apps,
+            "enable_app_installer": enable_app_installer,
+            "issues": issues,
+            "detail": detail,
+        }
+
+    def get_windows_security_diagnostics(self) -> dict:
+        """Coleta sinais de Defender/SmartScreen que podem impactar binarios baixados."""
+        smartscreen_shell = self._read_registry_dword(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Policies\Microsoft\Windows\System",
+            "EnableSmartScreen",
+        )
+        smartscreen_store = self._read_registry_dword(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer",
+            "SmartScreenEnabled",
+        )
+        realtime_monitoring = self._read_registry_dword(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection",
+            "DisableRealtimeMonitoring",
+        )
+        defender_service = self.get_service_details("WinDefend")
+
+        issues = []
+        if smartscreen_shell == 0:
+            issues.append("Politica EnableSmartScreen desabilitada")
+        if realtime_monitoring == 1:
+            issues.append("Politica DisableRealtimeMonitoring ativa")
+        if defender_service.get("available") and defender_service.get("start_mode", "").lower() == "disabled":
+            issues.append("Servico WinDefend desabilitado")
+
+        detail = (
+            "Diagnostico de seguranca do Windows: "
+            f"EnableSmartScreen={smartscreen_shell if smartscreen_shell is not None else 'nao_configurado'} | "
+            f"SmartScreenEnabled={smartscreen_store if smartscreen_store is not None else 'nao_configurado'} | "
+            f"DisableRealtimeMonitoring={realtime_monitoring if realtime_monitoring is not None else 'nao_configurado'} | "
+            f"WinDefend={self._format_service_detail(defender_service)}"
+        )
+        return {
+            "smartscreen_shell": smartscreen_shell,
+            "smartscreen_store": smartscreen_store,
+            "realtime_monitoring": realtime_monitoring,
+            "defender_service": defender_service,
+            "issues": issues,
+            "detail": detail,
+        }
+
     def validate_client_health(self) -> dict:
         """Valida se o cliente do WinGet responde a uma operacao basica de source."""
         result = self._run_winget_command(["source", "list", "--disable-interactivity"])
@@ -188,11 +420,11 @@ class WinGetManager:
                     "healthy": True,
                     "action": "refreshed_outdated_client",
                     "detail": "Cliente do WinGet atualizado preventivamente antes da execucao.",
-                "health_result": post_refresh_health,
-                "refresh_result": proactive_refresh_result,
-                "initial_version": self._extract_version_from_refresh_result(proactive_refresh_result),
-                "final_version": self.get_version(),
-            }
+                    "health_result": post_refresh_health,
+                    "refresh_result": proactive_refresh_result,
+                    "initial_version": self._extract_version_from_refresh_result(proactive_refresh_result),
+                    "final_version": self.get_version(),
+                }
 
         initial_version = self.get_version()
         initial_health = self.validate_client_health()
@@ -263,7 +495,10 @@ class WinGetManager:
 
     def check_package_status_details(self, package_id: str) -> dict:
         """Retorna diagnosticos completos da consulta `winget list --id`."""
-        result = self._run_winget_command(self._build_package_command_args("list", package_id))
+        result = self._run_winget_command(
+            self._build_package_command_args("list", package_id),
+            timeout_seconds=self.metadata_operation_timeout_seconds,
+        )
         stdout = result["stdout"]
         found = result["success"] and package_id.lower() in stdout.lower()
         detail = self._summarize_result(result, "consulta do pacote")
@@ -291,6 +526,7 @@ class WinGetManager:
                 ],
             ),
             repair_label="instalacao do pacote",
+            timeout_seconds=self.package_operation_timeout_seconds,
         )
         detail = self._summarize_result(result, "instalacao do pacote")
         return {
@@ -324,6 +560,7 @@ class WinGetManager:
                 ],
             ),
             repair_label="atualizacao do pacote",
+            timeout_seconds=self.package_operation_timeout_seconds,
         )
         detail = self._summarize_result(result, "atualizacao do pacote")
         return {
@@ -349,12 +586,44 @@ class WinGetManager:
                 ],
             ),
             repair_label="desinstalacao do pacote",
+            timeout_seconds=self.package_operation_timeout_seconds,
         )
         detail = self._summarize_result(result, "desinstalacao do pacote")
         return {
             **result,
             "detail": detail,
             "diagnostics": self._build_diagnostics(result),
+        }
+
+    def search_packages(self, query: str, limit: int = 12) -> dict:
+        """Pesquisa pacotes no WinGet e retorna resultados resumidos para selecao dinamica."""
+        cleaned_query = (query or "").strip()
+        if not cleaned_query:
+            return {
+                "success": False,
+                "query": cleaned_query,
+                "results": [],
+                "detail": "Consulta vazia para pesquisa de pacotes no WinGet.",
+            }
+
+        result = self._run_winget_command(
+            [
+                "search",
+                cleaned_query,
+                "--source",
+                self.default_source,
+                "--accept-source-agreements",
+                "--disable-interactivity",
+            ],
+            timeout_seconds=self.metadata_operation_timeout_seconds,
+        )
+        parsed_results = self._parse_search_results(result.get("stdout", ""))
+        ranked_results = self._rank_search_results(cleaned_query, parsed_results)
+        return {
+            **result,
+            "query": cleaned_query,
+            "results": ranked_results[:limit],
+            "detail": self._summarize_result(result, "pesquisa de pacotes no WinGet"),
         }
 
     def _build_package_command_args(
@@ -375,14 +644,275 @@ class WinGetManager:
             args.extend(extra_args)
         return args
 
-    def _run_winget_command_with_source_repair(self, args: list[str], repair_label: str) -> dict:
-        result = self._run_winget_command(args)
+    @staticmethod
+    def _parse_search_results(stdout: str) -> list[dict]:
+        results = []
+        lines = (stdout or "").splitlines()
+        header_index = -1
+        header_columns = []
+        header_starts = []
+
+        for index, raw_line in enumerate(lines):
+            lowered = raw_line.strip().lower()
+            if ("name" in lowered or "nome" in lowered) and "id" in lowered:
+                header_index = index
+                for match in re.finditer(r"\b(Name|Nome|Id|Version|Match|Source)\b", raw_line, flags=re.IGNORECASE):
+                    header_columns.append(match.group(1).strip().lower())
+                    header_starts.append(match.start())
+                break
+
+        if header_index == -1 or not header_columns or not header_starts:
+            return results
+
+        slice_bounds = header_starts + [None]
+        for raw_line in lines[header_index + 1:]:
+            line = raw_line.strip()
+            if not line or line.startswith("-"):
+                continue
+            lowered = line.lower()
+            if "no package found" in lowered or "nenhum pacote encontrado" in lowered:
+                continue
+
+            line_match = WinGetManager._parse_search_result_from_line_structure(line)
+            if line_match:
+                results.append(line_match)
+                continue
+
+            split_match = WinGetManager._parse_search_result_from_split_columns(line)
+            if split_match:
+                results.append(split_match)
+                continue
+
+            regex_match = re.match(
+                r"^(?P<name>.+?)\s{2,}(?P<id>[A-Za-z0-9][\w\.-]+)\s{2,}(?P<version>\S+)(?:\s{2,}(?P<match>.*?))?\s{2,}(?P<source>\w+)\s*$",
+                raw_line.rstrip(),
+            )
+            if regex_match:
+                name = regex_match.group("name").strip()
+                package_id = regex_match.group("id").strip()
+                version = regex_match.group("version").strip()
+                source = regex_match.group("source").strip()
+                if "." in package_id:
+                    results.append(
+                        {
+                            "name": name,
+                            "id": package_id,
+                            "version": version,
+                            "source": source,
+                            "score": 0,
+                            "confidence": "baixa",
+                            "automation_hint": "generico",
+                            "automation_label": "Resultado generico",
+                        }
+                    )
+                    continue
+
+            parsed_columns = {}
+            for index, column_name in enumerate(header_columns):
+                start = slice_bounds[index]
+                end = slice_bounds[index + 1]
+                value = raw_line[start:end].strip() if end is not None else raw_line[start:].strip()
+                parsed_columns[column_name] = value
+
+            name = parsed_columns.get("name") or parsed_columns.get("nome") or ""
+            package_id = parsed_columns.get("id", "")
+            version = parsed_columns.get("version", "")
+            source = parsed_columns.get("source", "")
+            package_id = WinGetManager._sanitize_package_id(package_id)
+            version = WinGetManager._sanitize_version(version)
+            source = WinGetManager._sanitize_source(source)
+            if not name or not package_id:
+                continue
+            if "." not in package_id:
+                continue
+            results.append(
+                {
+                    "name": name,
+                    "id": package_id,
+                    "version": version,
+                    "source": source,
+                    "score": 0,
+                    "confidence": "baixa",
+                    "automation_hint": "generico",
+                    "automation_label": "Resultado generico",
+                }
+            )
+        return results
+
+    @staticmethod
+    def _parse_search_result_from_line_structure(line: str) -> dict | None:
+        working_line = line.strip()
+        source = ""
+
+        source_match = re.search(r"\s{2,}(winget|msstore)\s*$", working_line, flags=re.IGNORECASE)
+        if source_match:
+            source = source_match.group(1).lower()
+            working_line = working_line[:source_match.start()].rstrip()
+
+        package_id_pattern = (
+            r"\b(?=[A-Za-z0-9._-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)+\b"
+        )
+        version_pattern = r"(?P<version>[<>~=vV]?\d[\w.\-+]*)"
+
+        for package_id_match in reversed(list(re.finditer(package_id_pattern, working_line))):
+            trailing_text = working_line[package_id_match.end():].strip()
+            if not trailing_text:
+                continue
+            version_match = re.match(version_pattern, trailing_text, flags=re.IGNORECASE)
+            if not version_match:
+                continue
+            name = working_line[:package_id_match.start()].strip()
+            if not name:
+                continue
+            return {
+                "name": name,
+                "id": package_id_match.group(0),
+                "version": version_match.group("version"),
+                "source": source,
+                "score": 0,
+                "confidence": "baixa",
+                "automation_hint": "generico",
+                "automation_label": "Resultado generico",
+            }
+        return None
+
+    @staticmethod
+    def _parse_search_result_from_split_columns(line: str) -> dict | None:
+        segments = [segment.strip() for segment in re.split(r"\s{2,}", line.strip()) if segment.strip()]
+        if len(segments) < 2:
+            return None
+
+        name = segments[0]
+        package_id = WinGetManager._sanitize_package_id(segments[1])
+        if not name or not package_id or "." not in package_id:
+            return None
+
+        remainder = segments[2:]
+        source = ""
+        if remainder:
+            possible_source = WinGetManager._sanitize_source(remainder[-1])
+            if possible_source:
+                source = possible_source
+                remainder = remainder[:-1]
+
+        version = ""
+        if remainder:
+            version = WinGetManager._sanitize_version(remainder[0])
+
+        return {
+            "name": name,
+            "id": package_id,
+            "version": version,
+            "source": source,
+            "score": 0,
+            "confidence": "baixa",
+            "automation_hint": "generico",
+            "automation_label": "Resultado generico",
+        }
+
+    @staticmethod
+    def _sanitize_package_id(raw_value: str) -> str:
+        value = (raw_value or "").strip()
+        if not value:
+            return ""
+        match = re.search(
+            r"\b(?=[A-Za-z0-9._-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)+\b",
+            value,
+        )
+        if match:
+            return match.group(0)
+        first_token = value.split()[0] if value.split() else ""
+        return first_token.strip()
+
+    @staticmethod
+    def _sanitize_version(raw_value: str) -> str:
+        value = (raw_value or "").strip()
+        if not value:
+            return ""
+        token = value.split()[0]
+        if re.match(r"^(unknown|latest|[<>~=vV]?\d[\w.\-+]*)$", token, flags=re.IGNORECASE):
+            return token
+        return ""
+
+    @staticmethod
+    def _sanitize_source(raw_value: str) -> str:
+        value = (raw_value or "").strip().lower()
+        if value in {"winget", "msstore"}:
+            return value
+        return ""
+
+    @classmethod
+    def _rank_search_results(cls, query: str, results: list[dict]) -> list[dict]:
+        normalized_query = cls._normalize_text(query)
+        query_tokens = [token for token in normalized_query.split() if token]
+        ranked = []
+
+        for item in results:
+            name = cls._normalize_text(item.get("name", ""))
+            package_id = cls._normalize_text(item.get("id", ""))
+            score = 0
+            if name == normalized_query:
+                score += 120
+            if package_id == normalized_query:
+                score += 120
+            if normalized_query and normalized_query in name:
+                score += 60
+            if normalized_query and normalized_query in package_id:
+                score += 40
+            score += sum(8 for token in query_tokens if token in name)
+            score += sum(5 for token in query_tokens if token in package_id)
+            if (item.get("source") or "").lower() == "winget":
+                score += 5
+
+            confidence = "baixa"
+            if score >= 120:
+                confidence = "alta"
+            elif score >= 60:
+                confidence = "media"
+
+            automation_hint = cls._classify_automation_hint(
+                query=normalized_query,
+                name=name,
+                package_id=package_id,
+                confidence=confidence,
+            )
+            automation_labels = {
+                "trusted": "Bom para automacao",
+                "likely_official": "Provavel pacote oficial",
+                "generic": "Resultado generico",
+            }
+
+            ranked_item = dict(item)
+            ranked_item["score"] = score
+            ranked_item["confidence"] = confidence
+            ranked_item["automation_hint"] = automation_hint
+            ranked_item["automation_label"] = automation_labels[automation_hint]
+            ranked.append(ranked_item)
+
+        ranked.sort(key=lambda entry: (-entry["score"], entry.get("name", "").lower()))
+        return ranked
+
+    @staticmethod
+    def _classify_automation_hint(query: str, name: str, package_id: str, confidence: str) -> str:
+        if confidence == "alta" and "." in package_id and query and query in name:
+            return "trusted"
+        if "." in package_id and confidence in {"alta", "media"}:
+            return "likely_official"
+        return "generic"
+
+    def _run_winget_command_with_source_repair(
+        self,
+        args: list[str],
+        repair_label: str,
+        timeout_seconds: int | None = None,
+    ) -> dict:
+        result = self._run_winget_command(args, timeout_seconds=timeout_seconds)
         if result["success"] or not self._looks_like_source_failure(result):
             return result
 
         client_repair_result = self.repair_client_package()
         if client_repair_result["success"]:
-            retried_after_client_repair = self._run_winget_command(args)
+            retried_after_client_repair = self._run_winget_command(args, timeout_seconds=timeout_seconds)
             if retried_after_client_repair["success"]:
                 retried_after_client_repair["repair_attempted"] = True
                 retried_after_client_repair["repair_succeeded"] = True
@@ -416,7 +946,7 @@ class WinGetManager:
                 "repair_result": repair_result,
             }
 
-        retried_result = self._run_winget_command(args)
+        retried_result = self._run_winget_command(args, timeout_seconds=timeout_seconds)
         if retried_result["success"]:
             retried_result["repair_attempted"] = True
             retried_result["repair_succeeded"] = True
@@ -469,7 +999,7 @@ class WinGetManager:
             "-Command",
             (
                 "$bundle = Join-Path $env:TEMP 'Microsoft.DesktopAppInstaller.msixbundle'; "
-                "Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile $bundle; "
+                    "Invoke-WebRequest -UseBasicParsing -Uri 'https://aka.ms/getwinget' -OutFile $bundle; "
                 "Add-AppxPackage -Path $bundle -ForceApplicationShutdown"
             ),
         ]
@@ -525,13 +1055,88 @@ class WinGetManager:
         ).lower()
         return any(marker in haystack for marker in self.source_repair_error_markers)
 
-    def _run_winget_command(self, args: list[str]) -> dict:
+    def _run_winget_command(self, args: list[str], timeout_seconds: int | None = None) -> dict:
         command = [self.executable, *args]
-        return self._run_system_command(command)
+        return self._run_system_command(command, timeout_seconds=timeout_seconds)
 
     def _record_systemic_install_failure(self, result: dict) -> None:
         self.systemic_install_failure = True
         self.systemic_install_failure_diagnostics = self._build_diagnostics(result)
+
+    def get_appx_package_details(self, package_name: str) -> dict:
+        safe_name = package_name.replace("'", "''")
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-Command",
+            (
+                f"$pkg = Get-AppxPackage -Name '{safe_name}' | "
+                "Select-Object -First 1 Name, Version, PackageFamilyName; "
+                "if ($pkg) { $pkg | ConvertTo-Json -Compress }"
+            ),
+        ]
+        result = self._run_system_command(command)
+        if not result["success"] or not result["stdout"]:
+            return {
+                "installed": False,
+                "package_name": package_name,
+                "version": "",
+                "family": "",
+            }
+
+        try:
+            payload = json.loads(result["stdout"])
+        except json.JSONDecodeError:
+            return {
+                "installed": False,
+                "package_name": package_name,
+                "version": "",
+                "family": "",
+            }
+
+        return {
+            "installed": True,
+            "package_name": str(payload.get("Name") or package_name),
+            "version": str(payload.get("Version") or ""),
+            "family": str(payload.get("PackageFamilyName") or ""),
+        }
+
+    def get_service_details(self, service_name: str) -> dict:
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-Command",
+            (
+                f"$svc = Get-CimInstance Win32_Service -Filter \"Name='{service_name}'\" | "
+                "Select-Object -First 1 Name, State, StartMode; "
+                "if ($svc) { $svc | ConvertTo-Json -Compress }"
+            ),
+        ]
+        result = self._run_system_command(command)
+        if not result["success"] or not result["stdout"]:
+            return {
+                "available": False,
+                "name": service_name,
+                "state": "",
+                "start_mode": "",
+            }
+
+        try:
+            payload = json.loads(result["stdout"])
+        except json.JSONDecodeError:
+            return {
+                "available": False,
+                "name": service_name,
+                "state": "",
+                "start_mode": "",
+            }
+
+        return {
+            "available": True,
+            "name": str(payload.get("Name") or service_name),
+            "state": str(payload.get("State") or ""),
+            "start_mode": str(payload.get("StartMode") or ""),
+        }
 
     def get_version_tuple(self) -> tuple[int, ...]:
         version_text = (self.get_version() or "").strip().lower().lstrip("v")
@@ -571,14 +1176,26 @@ class WinGetManager:
         ascii_only = "".join(char for char in normalized if not unicodedata.combining(char))
         return " ".join(ascii_only.lower().split())
 
-    def _run_system_command(self, command: list[str]) -> dict:
+    @staticmethod
+    def _format_service_detail(service: dict) -> str:
+        if not service.get("available"):
+            return "indisponivel"
+        return (
+            f"{service.get('state', 'desconhecido')}/"
+            f"{service.get('start_mode', 'desconhecido')}"
+        )
+
+    def _run_system_command(self, command: list[str], timeout_seconds: int | None = None) -> dict:
+        preferred_encoding = locale.getpreferredencoding(False) or "utf-8"
         try:
             completed = subprocess.run(
                 command,
                 capture_output=True,
                 text=True,
-                encoding="utf-8",
+                encoding=preferred_encoding,
+                errors="replace",
                 check=True,
+                timeout=timeout_seconds,
             )
             return {
                 "success": True,
@@ -586,6 +1203,7 @@ class WinGetManager:
                 "stdout": completed.stdout.strip(),
                 "stderr": completed.stderr.strip(),
                 "command": command,
+                "timed_out": False,
             }
         except subprocess.CalledProcessError as error:
             return {
@@ -594,6 +1212,16 @@ class WinGetManager:
                 "stdout": (error.stdout or "").strip(),
                 "stderr": (error.stderr or "").strip(),
                 "command": command,
+                "timed_out": False,
+            }
+        except subprocess.TimeoutExpired as error:
+            return {
+                "success": False,
+                "returncode": None,
+                "stdout": ((error.stdout or "") if isinstance(error.stdout, str) else "").strip(),
+                "stderr": f"Comando excedeu o tempo limite de {timeout_seconds}s.".strip(),
+                "command": command,
+                "timed_out": True,
             }
         except Exception as error:
             return {
@@ -602,6 +1230,7 @@ class WinGetManager:
                 "stdout": "",
                 "stderr": str(error),
                 "command": command,
+                "timed_out": False,
             }
 
     @staticmethod
@@ -674,4 +1303,21 @@ class WinGetManager:
                 value, _ = winreg.QueryValueEx(registry_key, value_name)
                 return str(value)
         except OSError:
+            return None
+
+    @staticmethod
+    def _read_registry_key_exists(subkey_path: str) -> bool:
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, subkey_path):
+                return True
+        except OSError:
+            return False
+
+    @staticmethod
+    def _read_registry_dword(root, subkey_path: str, value_name: str) -> int | None:
+        try:
+            with winreg.OpenKey(root, subkey_path) as registry_key:
+                value, _ = winreg.QueryValueEx(registry_key, value_name)
+                return int(value)
+        except (OSError, ValueError, TypeError):
             return None
