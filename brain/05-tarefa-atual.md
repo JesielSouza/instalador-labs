@@ -1,6 +1,6 @@
 # Tarefa Atual: Endurecimento Operacional e Reducao de Acoplamento Pos-v0.2.0
 
-**Status:** Release v0.2.0 publicada e memoria sincronizada. A iteracao atual trabalhou em duas ondas pragmáticas: (1) endurecimento de catalogo/schema e fallback/download; (2) reducao de acoplamento do `main.py` por extracao de suporte de runtime para modulo dedicado. Tudo validado localmente com 53 testes verdes.
+**Status:** Release v0.2.0 publicada e memoria sincronizada. A iteracao atual trabalhou em tres ondas pragmáticas: (1) endurecimento de catalogo/schema e fallback/download; (2) reducao de acoplamento do `main.py` por extracao de suporte de runtime para modulo dedicado; (3) extracao do bloco de relatorio/resumo/classificacao diagnostica para `utils/reporting.py`. Tudo validado localmente com 53 testes verdes.
 
 **Objetivo:** Consolidar a base pos-v0.2.0 reduzindo risco real de campo antes de partir para evolucoes maiores de UX ou novos perfis.
 
@@ -14,17 +14,19 @@
 - [x] **Task 5.7**: Registrar comando executado em falhas de fallback para troubleshooting remoto.
 - [x] **Task 5.8**: Extrair diagnosticos de runtime e mensagens ao operador de `main.py` para `utils/runtime_support.py`.
 - [x] **Task 5.9**: Revalidar a suite automatizada relevante (`tests.test_main`, `tests.test_package_loader`, `tests.test_fallback_installer`).
+- [x] **Task 5.10**: Extrair resumo de execucao, classificacao diagnostica e geracao de relatorio de `main.py` para `utils/reporting.py` preservando contrato funcional via wrappers.
 
 ## Resultado da Iteracao
 - O schema do catalogo agora falha cedo em entradas ambiguas ou inseguras.
 - O fallback direto ficou mais resistente a downloads quebrados, payloads invalidos e artefatos pequenos demais para serem instaladores reais.
 - O troubleshooting remoto ficou melhor com diagnosticos mais claros e log do comando executado em falhas de fallback.
 - `main.py` ficou menos carregado de responsabilidades operacionais ao extrair suporte de runtime para `utils/runtime_support.py`.
+- O bloco de relatorio/resumo/classificacao diagnostica agora vive em `utils/reporting.py`, preservando o contrato funcional do fluxo principal por meio de wrappers finos em `main.py`.
 - Validacao local concluida com **53 testes OK**.
 
 ## Iteracao em Andamento
 - Atualizar `brain/` e abrir PR desta iteracao para merge controlado.
-- Avaliar nova extracao pragmatica de `main.py` (preflight/bootstrap ou relatorio/resumo) sem refatoracao cosmetica.
+- Avaliar nova extracao pragmatica de `main.py` focando preflight/bootstrap, sem refatoracao cosmetica.
 - Validar em campo se o endurecimento novo melhora o comportamento em downloads quebrados e catalogos inconsistentes.
 
 ## Instrucoes para o Codex
