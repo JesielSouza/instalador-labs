@@ -225,3 +225,9 @@
 * **Decisao**: Extrair o suporte de runtime e operator messaging para `utils/runtime_support.py`, mantendo `main.py` como orquestrador do fluxo principal.
 * **Consequencia**: O codigo fica mais modular, com menor concentracao de responsabilidade em `main.py`, sem trocar o comportamento funcional do produto.
 * **Status**: Implementado na branch `fix/harden-runtime-and-catalog`.
+
+## [ADR-042] - Relatorio e resumo de execucao devem viver fora do main.py
+* **Contexto**: Depois da extracao do suporte de runtime, `main.py` ainda concentrava classificacao diagnostica, resumo textual ao operador e geracao do CSV final, que formam um bloco coeso e testavel por si so.
+* **Decisao**: Extrair esse bloco para `utils/reporting.py`, mantendo wrappers finos em `main.py` para preservar contrato funcional e evitar regressao no restante do fluxo.
+* **Consequencia**: O codigo de relatorio fica mais modular e reutilizavel, enquanto `main.py` continua encolhendo sem quebrar a API interna usada pelos testes e pelo runtime.
+* **Status**: Implementado na branch `refactor/extract-preflight-and-reporting`.

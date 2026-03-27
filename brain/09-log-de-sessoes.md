@@ -242,3 +242,10 @@
 * **Acoes**: Preservacao do contrato funcional de `main.py` como orquestrador, incluindo adaptacao da funcao de erro visivel ao operador para respeitar o estado `_OPERATOR_WINDOW_ACTIVE`.
 * **Validacao**: `tests.test_main`, `tests.test_package_loader` e `tests.test_fallback_installer` executados com sucesso, totalizando **53 testes OK**.
 * **Resultado**: `main.py` fica menos concentrado em responsabilidades operacionais, melhorando manutenibilidade sem mudar o comportamento do fluxo principal.
+
+## [Sessao 46] - Extracao de Relatorio e Resumo de Execucao (2026-03-27)
+* **Acoes**: Extracao da classificacao diagnostica, resumo textual ao operador e geracao do relatorio CSV de `main.py` para o novo modulo `utils/reporting.py`.
+* **Acoes**: Preservacao do contrato funcional por meio de wrappers finos em `main.py`, evitando regressao no fluxo principal e nos testes existentes.
+* **Acoes**: Correcao do modulo extraido para manter exatamente a taxonomia diagnostica e os textos esperados pelo projeto, apos a primeira tentativa ter simplificado demais a semantica.
+* **Validacao**: `tests.test_main` executado com sucesso (28 testes OK) e revalidacao complementar de `tests.test_package_loader` + `tests.test_fallback_installer` (25 testes OK), mantendo o total de **53 testes verdes**.
+* **Resultado**: `main.py` perde mais um bloco coeso de responsabilidade sem mudar o comportamento observavel do produto.
