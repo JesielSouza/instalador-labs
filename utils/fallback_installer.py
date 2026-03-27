@@ -1,3 +1,4 @@
+import os
 import ssl
 import subprocess
 import urllib.error
@@ -13,6 +14,7 @@ class DirectInstallerManager:
     """Gerencia fallback por instalador direto e downloads oficiais catalogados."""
 
     _MSI_SIGNATURE = bytes.fromhex("D0CF11E0A1B11AE1")
+    _MIN_VALID_FILE_SIZE_BYTES = 1024
 
     def is_package_present(self, package: dict) -> bool:
         detect_names = package.get("detect_names", [])
@@ -82,8 +84,10 @@ class DirectInstallerManager:
                 )
                 self._download_with_windows_downloaders(download_url, target_path, package, logger)
             else:
-                raise RuntimeError(f"Falha ao baixar '{package['software']}': {error}") from error
-        self._ensure_valid_installer_file(target_path)
+                raise RuntimeError(
+                    f"Falha ao baixar '{package['software']}' de {download_url}: {error}"
+                ) from error
+        self._ensure_valid_installer_file(target_path, download_url=download_url)
         return target_path
 
     def download_manual_installer(self, package: dict, logger) -> Path:
@@ -145,6 +149,12 @@ class DirectInstallerManager:
                 status="fallback_install_error",
                 package_name=package["software"],
             )
+            if command:
+                logger.error(
+                    f"Comando executado para '{package['software']}': {' '.join(map(str, command))}",
+                    status="fallback_install_command_diagnostics",
+                    package_name=package["software"],
+                )
             return False
 
     def _install_prerequisites(self, package: dict, logger) -> bool:
@@ -197,25 +207,43 @@ class DirectInstallerManager:
             ]
         return [str(installer_path), *install_args]
 
-    def _ensure_valid_installer_file(self, installer_path: Path) -> None:
-        if not self._looks_like_valid_installer(installer_path):
+    def _ensure_valid_installer_file(self, installer_path: Path, download_url: str = "") -> None:
+        validation_error = self._get_invalid_installer_reason(installer_path)
+        if validation_error:
+            url_hint = f" URL: {download_url}" if download_url else ""
             raise ValueError(
-                f"Arquivo baixado em '{installer_path.name}' nao parece ser um instalador Windows valido."
+                f"Arquivo baixado em '{installer_path.name}' nao parece ser um instalador Windows valido. {validation_error}.{url_hint}"
             )
 
-    def _looks_like_valid_installer(self, installer_path: Path) -> bool:
+    def _get_invalid_installer_reason(self, installer_path: Path) -> str:
+        try:
+            file_size = installer_path.stat().st_size
+        except OSError as error:
+            return f"nao foi possivel ler o arquivo ({error})"
+
+        if file_size < self._MIN_VALID_FILE_SIZE_BYTES:
+            return f"arquivo muito pequeno ({file_size} bytes)"
+
         try:
             with installer_path.open("rb") as installer_file:
-                header = installer_file.read(8)
-        except OSError:
-            return False
+                header = installer_file.read(16)
+        except OSError as error:
+            return f"nao foi possivel abrir o arquivo ({error})"
 
         suffix = installer_path.suffix.lower()
-        if suffix == ".exe":
-            return header.startswith(b"MZ")
-        if suffix == ".msi":
-            return header.startswith(self._MSI_SIGNATURE)
-        return bool(header)
+        if suffix == ".exe" and not header.startswith(b"MZ"):
+            return "cabecalho invalido para executavel (.exe)"
+        if suffix == ".msi" and not header.startswith(self._MSI_SIGNATURE):
+            return "cabecalho invalido para pacote MSI (.msi)"
+        if suffix in {".msix", ".msixbundle", ".appxbundle", ".zip"} and not header.startswith(b"PK"):
+            return f"cabecalho invalido para pacote compactado ({suffix})"
+        if not header:
+            return "arquivo vazio"
+
+        return ""
+
+    def _looks_like_valid_installer(self, installer_path: Path) -> bool:
+        return not self._get_invalid_installer_reason(installer_path)
 
     @staticmethod
     def _extract_msi_log_hint(command: list[str]) -> str:

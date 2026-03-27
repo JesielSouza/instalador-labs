@@ -5,6 +5,9 @@ from copy import deepcopy
 from pathlib import Path
 from urllib.parse import urlparse
 
+_ALLOWED_INSTALLER_FILE_EXTENSIONS = {".exe", ".msi", ".msix", ".msixbundle", ".appxbundle", ".zip"}
+_ALLOWED_INSTALLER_URL_SCHEMES = {"https"}
+
 from config import DEFAULT_PACKAGE_PROFILE, PACKAGES_DIR
 
 ALLOWED_INSTALL_TYPES = {"winget", "winget_pending", "manual"}
@@ -80,6 +83,62 @@ def load_package_profile(file_path: str | Path) -> dict:
 
     with path.open("r", encoding="utf-8") as file:
         return json.load(file)
+
+
+def _validate_installer_config(installer_config: dict, installer_key: str, index: int, package_label: str) -> None:
+    if not isinstance(installer_config, dict):
+        raise PackageProfileValidationError(
+            f"Pacote invalido na posicao {index}: '{installer_key}' deve ser um objeto."
+        )
+
+    required_fields = ["download_url"]
+    if installer_key == "fallback_installer":
+        required_fields.append("install_args")
+
+    for field in required_fields:
+        if field not in installer_config:
+            raise PackageProfileValidationError(
+                f"Pacote invalido na posicao {index}: campo obrigatorio ausente em '{package_label}.{installer_key}': '{field}'."
+            )
+
+    download_url = installer_config.get("download_url")
+    if not isinstance(download_url, str) or not download_url.strip():
+        raise PackageProfileValidationError(
+            f"Pacote invalido na posicao {index}: '{package_label}.{installer_key}.download_url' deve ser string nao vazia."
+        )
+
+    parsed_url = urlparse(download_url)
+    if parsed_url.scheme.lower() not in _ALLOWED_INSTALLER_URL_SCHEMES or not parsed_url.netloc.strip():
+        raise PackageProfileValidationError(
+            f"Pacote invalido na posicao {index}: '{package_label}.{installer_key}.download_url' deve usar HTTPS e conter host valido."
+        )
+
+    install_args = installer_config.get("install_args")
+    if install_args is not None and (
+        not isinstance(install_args, list) or not all(isinstance(arg, str) and arg.strip() for arg in install_args)
+    ):
+        raise PackageProfileValidationError(
+            f"Pacote invalido na posicao {index}: '{package_label}.{installer_key}.install_args' deve ser uma lista de strings nao vazias quando informada."
+        )
+
+    file_name = installer_config.get("file_name")
+    if file_name is not None:
+        if not isinstance(file_name, str) or not file_name.strip():
+            raise PackageProfileValidationError(
+                f"Pacote invalido na posicao {index}: '{package_label}.{installer_key}.file_name' deve ser string nao vazia quando informado."
+            )
+        if Path(file_name).name != file_name.strip():
+            raise PackageProfileValidationError(
+                f"Pacote invalido na posicao {index}: '{package_label}.{installer_key}.file_name' nao pode conter diretorios."
+            )
+
+    inferred_name = (file_name or Path(parsed_url.path).name or "").strip()
+    if inferred_name:
+        suffix = Path(inferred_name).suffix.lower()
+        if suffix and suffix not in _ALLOWED_INSTALLER_FILE_EXTENSIONS:
+            raise PackageProfileValidationError(
+                f"Pacote invalido na posicao {index}: '{package_label}.{installer_key}' usa extensao nao suportada '{suffix}'."
+            )
 
 
 def validate_package_profile(profile: dict) -> dict:
@@ -192,60 +251,46 @@ def validate_package_profile(profile: dict) -> dict:
                     )
 
                 prerequisite_fallback = prerequisite.get("fallback_installer")
-                if prerequisite_fallback is None or not isinstance(prerequisite_fallback, dict):
+                if prerequisite_fallback is None:
                     raise PackageProfileValidationError(
                         f"Pacote invalido na posicao {index}: pre-requisito {prerequisite_index} exige 'fallback_installer' valido."
                     )
 
-                if not isinstance(prerequisite_fallback.get("download_url"), str) or not prerequisite_fallback["download_url"].strip():
-                    raise PackageProfileValidationError(
-                        f"Pacote invalido na posicao {index}: 'prerequisites[{prerequisite_index}].fallback_installer.download_url' deve ser string nao vazia."
-                    )
+                _validate_installer_config(
+                    prerequisite_fallback,
+                    "fallback_installer",
+                    index,
+                    f"prerequisites[{prerequisite_index}]",
+                )
 
-                prerequisite_install_args = prerequisite_fallback.get("install_args")
-                if not isinstance(prerequisite_install_args, list) or not all(
-                    isinstance(arg, str) for arg in prerequisite_install_args
-                ):
-                    raise PackageProfileValidationError(
-                        f"Pacote invalido na posicao {index}: 'prerequisites[{prerequisite_index}].fallback_installer.install_args' deve ser uma lista de strings."
-                    )
+        if install_type == "manual" and package.get("fallback_installer") is not None:
+            raise PackageProfileValidationError(
+                f"Pacote invalido na posicao {index}: install_type 'manual' nao deve usar 'fallback_installer'. Use 'official_download' ou referencia manual."
+            )
 
-        for installer_key, require_install_args in (("fallback_installer", True), ("official_download", False)):
+        if install_type in {"winget", "winget_pending"} and package.get("manual_reference_url") is not None:
+            raise PackageProfileValidationError(
+                f"Pacote invalido na posicao {index}: 'manual_reference_url' so pode ser usado em itens manuais."
+            )
+
+        manual_reference_url = package.get("manual_reference_url")
+        if manual_reference_url is not None:
+            if install_type != "manual":
+                raise PackageProfileValidationError(
+                    f"Pacote invalido na posicao {index}: 'manual_reference_url' so e permitido para install_type 'manual'."
+                )
+            parsed_manual_url = urlparse(manual_reference_url)
+            if not isinstance(manual_reference_url, str) or not manual_reference_url.strip() or parsed_manual_url.scheme.lower() not in _ALLOWED_INSTALLER_URL_SCHEMES or not parsed_manual_url.netloc.strip():
+                raise PackageProfileValidationError(
+                    f"Pacote invalido na posicao {index}: 'manual_reference_url' deve usar HTTPS e conter host valido."
+                )
+
+        for installer_key in ("fallback_installer", "official_download"):
             installer_config = package.get(installer_key)
             if installer_config is None:
                 continue
 
-            if not isinstance(installer_config, dict):
-                raise PackageProfileValidationError(
-                    f"Pacote invalido na posicao {index}: '{installer_key}' deve ser um objeto."
-                )
-
-            required_fields = ["download_url"]
-            if require_install_args:
-                required_fields.append("install_args")
-
-            for field in required_fields:
-                if field not in installer_config:
-                    raise PackageProfileValidationError(
-                        f"Pacote invalido na posicao {index}: campo obrigatorio ausente em '{installer_key}': '{field}'."
-                    )
-
-            if not isinstance(installer_config["download_url"], str) or not installer_config["download_url"].strip():
-                raise PackageProfileValidationError(
-                    f"Pacote invalido na posicao {index}: '{installer_key}.download_url' deve ser string nao vazia."
-                )
-
-            install_args = installer_config.get("install_args")
-            if install_args is not None and (not isinstance(install_args, list) or not all(isinstance(arg, str) for arg in install_args)):
-                raise PackageProfileValidationError(
-                    f"Pacote invalido na posicao {index}: '{installer_key}.install_args' deve ser uma lista de strings quando informada."
-                )
-
-            file_name = installer_config.get("file_name")
-            if file_name is not None and (not isinstance(file_name, str) or not file_name.strip()):
-                raise PackageProfileValidationError(
-                    f"Pacote invalido na posicao {index}: '{installer_key}.file_name' deve ser string nao vazia quando informado."
-                )
+            _validate_installer_config(installer_config, installer_key, index, "package")
 
     return profile
 
