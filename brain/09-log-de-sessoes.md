@@ -1,4 +1,4 @@
-﻿# Log de Sessoes
+# Log de Sessoes
 
 ## [Sessao 01] - Estruturacao Inicial (2026-03-21)
 * **Acoes**: Definicao da estrutura de pastas `brain/` e criacao dos arquivos de governanca.
@@ -106,7 +106,8 @@
 ## [Sessao 21] - Verificacao Rapida Automatizada em PR (2026-03-21)
 * **Acoes**: Criacao do workflow `verificacao-rapida.yml` no GitHub Actions para validar o perfil ADS e executar a suite automatizada em PRs.
 * **Decisao**: O workflow roda em `windows-latest` para manter compatibilidade com o uso de `winreg` e com o comportamento esperado do projeto.
-* **Resultado**: O repositorio passa a ter uma verifica??o t?cnica objetiva e barata antes do merge, al?m do coment?rio do Gemini.
+* **Resultado**: O repositorio passa a ter uma verificacao tecnica objetiva e barata antes do merge, alem do comentario do Gemini.
+
 ## [Sessao 22] - EXE Validado em Campo com Feedback ao Operador (2026-03-22)
 * **Acoes**: Reconstrucao do `InstaladorLabs.exe` com ajuste de caminhos para separar recursos empacotados dos artefatos visiveis ao operador.
 * **Acoes**: Evolucao do fluxo principal para exibir resumo final ao operador com totais da execucao e caminho do relatorio, alem de mensagens claras em erros criticos.
@@ -149,7 +150,7 @@
 ## [Sessao 28] - Preparacao para Distribuicao Publica (2026-03-22)
 * **Acoes**: Criacao de `README.md` com orientacao de download do executavel pela aba `Releases` e uso do bundle Windows em ambiente real.
 * **Acoes**: Criacao do workflow `publicar-exe.yml` para gerar o bundle, compactar o conteudo de `dist\InstaladorLabs` e publicar a release no GitHub.
-* **Resultado**: O projeto passa a ter caminho claro para disponibilizacao publica do artefato funcional sem versionar `dist/` no reposit?rio.
+* **Resultado**: O projeto passa a ter caminho claro para disponibilizacao publica do artefato funcional sem versionar `dist/` no repositorio.
 
 ## [Sessao 29] - Correcao do Prompt da Microsoft Store no WinGet (2026-03-23)
 * **Acoes**: Reproducao do bloqueio interativo da `msstore` durante instalacao automatizada de `Visual Studio Code` em execucao real do `InstaladorLabs.exe`.
@@ -161,5 +162,70 @@
 * **Acoes**: Evolucao de `build_exe.ps1` para preservar sempre `dist\InstaladorLabs` como bundle final, usar sincronizacao robusta ao publicar o artefato e instruir o operador quando houver arquivos em uso.
 * **Acoes**: Abertura, revisao e merge da PR `#14`, incluindo ajuste apos finding sobre compatibilidade com o workflow `publicar-exe.yml`.
 * **Acoes**: Criacao e push da tag `v0.1.1`, com publicacao automatica da release `InstaladorLabs-v0.1.1-win64.zip` no GitHub.
-* **Aprendizados do ambiente**: O build local pode falhar ao sobrescrever `dist\InstaladorLabs` se o proprio `InstaladorLabs.exe` ou logs do bundle estiverem abertos; nesses casos o script agora orienta explicitamente o operador sobre como liberar o diretório.
+* **Aprendizados do ambiente**: O build local pode falhar ao sobrescrever `dist\InstaladorLabs` se o proprio `InstaladorLabs.exe` ou logs do bundle estiverem abertos; nesses casos o script agora orienta explicitamente o operador sobre como liberar o diretorio.
 * **Resultado**: Usuarios passam a ter uma release publica contendo a correcao do prompt da `msstore` e o endurecimento do processo de publicacao do `.exe`.
+
+## [Sessao 31] - Registros de Memoria e Release v0.1.1 (2026-03-23)
+* **Acoes**: Merge da PR `#15` (`docs/memoria-v0-1-1`) para documentar a validacao de campo e a release v0.1.1 no `brain/`.
+* **Resultado**: A release v0.1.1 foi formalmente registrada na memoria versionada do projeto.
+
+## [Sessao 32] - Reparo Automatico de Fontes Quebradas do WinGet (2026-03-23)
+* **Acoes**: Merge da PR `#16` (`fix/winget-source-repair`) para adicionar tentativa automatica de `winget source repair` quando o WinGet identificar fontes quebradas.
+* **Acoes**: Merge da PR `#17` (`fix/winget-source-repair-args`) para corrigir argumentos invalidos passados ao comando de repair.
+* **Resultado**: O instalador passa a tentar auto-recuperar fontes do WinGet antes de marcar como falha.
+
+## [Sessao 33] - Fallback Apos Falha Recuperavel do WinGet (2026-03-23)
+* **Acoes**: Merge da PR `#18` (`fix/fallback-after-winget-source-failure`) para acionar o fallback direto quando o WinGet falhar por fonte quebrada apos tentativa de repair.
+* **Resultado**: Itens que falharem por fonte indisponivel passam a ter caminho alternativo via instalador direto oficial.
+
+## [Sessao 34] - Expansao de Fallbacks e Validacao do Cliente WinGet (2026-03-23)
+* **Acoes**: Merge da PR `#19` (`fix/repair-winget-client-and-expand-fallbacks`) para expandir os fallbacks de instalacao e validar o cliente WinGet antes de usa-lo.
+* **Acoes**: Merge da PR `#20` (`fix/validate-winget-client-and-fix-figma-fallback`) para corrigir o fallback do Figma e validar o estado do cliente WinGet antes de qualquer operacao.
+* **Resultado**: O fluxo passa a fazer checagem de sanidade do WinGet antes de confiar nele como motor principal.
+
+## [Sessao 35] - Diagnostico Detalhado de Falhas do WinGet (2026-03-23)
+* **Acoes**: Merge da PR `#21` (`fix/log-raw-winget-failures`) para capturar e registrar o diagnostico cru de falhas do WinGet sem truncamento.
+* **Resultado**: Falhas do WinGet agora geram logs mais detalhados para troubleshooting remoto.
+
+## [Sessao 36] - Bypass de WinGet Quebrado no Windows 11 (2026-03-23)
+* **Acoes**: Merge da PR `#22` (`fix/bypass-broken-winget-and-log-mysql-msi`) para detectar quando o WinGet esta quebrado no Win11 e desviar para o fallback direto automaticamente.
+* **Resultado**: Maquinas Win11 com WinGet inoperante passam a usar o caminho do instalador direto sem intervencao manual.
+
+## [Sessao 37] - Deteccao de Proxy Antes das Instalacoes (2026-03-23)
+* **Acoes**: Merge da PR `#23` (`fix/detect-proxy-and-warn-operator`) para detectar configuracao de proxy antes de iniciar instalacoes via WinGet e alertar o operador.
+* **Resultado**: O instalador passa a avisar o operador sobre possiveis bloqueios por proxy antes de tentar instalacoes automatizadas.
+
+## [Sessao 38] - Validacao de Pre-Requisitos e Deteccao de Ja Instalados (2026-03-24)
+* **Acoes**: Evolucao de `utils/package_loader.py` com validacao de pre-requisitos por perfil.
+* **Acoes**: Evolucao de `utils/winget.py` e `utils/fallback_installer.py` para detectar pacotes ja instalados antes de tentar instalar, evitando reinstalacoes desnecessarias.
+* **Acoes**: Evolucao de `main.py` para validar pre-requisitos e registrar o diagnostico de ja instalado no relatorio.
+* **Validacao**: Suite automatizada expandida para cobrir os novos fluxos de pre-requisitos e deteccao previa.
+* **Resultado**: O instalador evita trabalho desnecessario e da feedback claro sobre o estado de cada pacote antes de agir.
+
+## [Sessao 39] - Log Confiavel de Versoes do Windows e WinGet (2026-03-24)
+* **Acoes**: Evolucao de `utils/winget.py` para registrar versoes confiaveis do Windows e do WinGet em log, facilitando diagnosticos remotos.
+* **Validacao**: Testes de `utils/winget.py` endurecidos para cobrir logging de versoes.
+* **Resultado**: Relatorios e logs passam a conter informacao de versao confiavel para troubleshooting.
+
+## [Sessao 40] - Retry de Downloads Diretos em Erros SSL (2026-03-24)
+* **Acoes**: Evolucao de `utils/fallback_installer.py` para tentar download via PowerShell como fallback quando o download direto falhar por erro SSL/TLS.
+* **Validacao**: Testes dedicados cobriram o novo caminho de retry via PowerShell.
+* **Resultado**: Downloads diretos se tornam mais robustos em ambientes com configuracao SSL restritiva.
+
+## [Sessao 41] - Refatoracao Macro e Nova Interface do .exe (2026-03-25)
+* **Acoes**: Merge da branch `feat/release-installer-0.2.0-workflow` com refatoracao profunda: `utils/winget.py` (+676 linhas), `utils/fallback_installer.py` (+85), `utils/package_loader.py` (+135), `main.py` (+1845 linhas), e extensao da suite de testes (+862 linhas).
+* **Acoes**: Nova arquitetura de interface do `.exe` com menu interativo consolidando escolha de perfil, pacotes e operacao (instalar/atualizar/desinstalar).
+* **Acoes**: Suporte a multiplos perfis de catalogo com selecao de subconjuntos de pacotes.
+* **Acoes**: Workflow dedicado `release-installer-0.2.0-workflow.yml` para publicacao automatica da release.
+* **Resultado**: O produto e lancado como `v0.2.0` com overhaul significativo de arquitetura, UX e robustez operacional.
+
+## [Sessao 42] - Release v0.2.0 Publicada (2026-03-25)
+* **Acoes**: Tag `v0.2.0` criada e pushada, disparando workflow de publicacao automatica.
+* **Artefato**: `InstaladorLabs-v0.2.0-win64.zip` publicado na aba Releases do GitHub.
+* **Resultado**: Usuarios passam a ter acesso a nova release com todas as evolucoes desde a v0.1.1.
+
+## [Sessao 43] - Sincronizacao de Memoria com OpenClaw (2026-03-27)
+* **Acoes**: OpenClaw получил acesso ao repo via `gh` CLI autenticado.
+* **Acoes**: Констатация de que o `brain/` local e remoto estavam sincronizados porem desatualizados em relacao ao remote (paravam na sessao 30).
+* **Acoes**: Reconstrucao das sessoes 31 a 43 a partir do git log e lista de PRs merged.
+* **Resultado**: A memoria versionada e atualizada para refletir o estado real do projeto em v0.2.0.

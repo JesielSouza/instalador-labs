@@ -153,3 +153,57 @@
 * **Decisao**: O script de build deve sempre preservar `dist\InstaladorLabs` como caminho final esperado pelo workflow de release, tentar publicacao direta primeiro e cair para sincronizacao robusta no mesmo caminho; se ainda houver falha por lock, deve exibir instrucoes objetivas para o operador fechar o app e repetir o build.
 * **Consequencia**: O processo de release continua compativel com o workflow do GitHub e o troubleshooting local fica ensinavel ao usuario sem depender de interpretacao de erro cru do PowerShell.
 * **Status**: Implementado e validado operacionalmente.
+
+## [ADR-030] - Reparo automatico de fontes quebradas do WinGet
+* **Contexto**: O WinGet pode ter suas fontes de pacotes corrompidas, causando falhas `winget source list` sem contudo significar que o cliente esta completamente quebrado.
+* **Decisao**: Antes de marcar um pacote como falha, o instalador deve tentar `winget source repair` para recuperar as fontes padrao e entao re-tentar a operacao.
+* **Consequencia**: Falhas transitórias por fonte corrompida sao recuperadas automaticamente sem escalar para fallback direto.
+* **Status**: Implementado.
+
+## [ADR-031] - Fallback direto apos falha recuperavel do WinGet
+* **Contexto**: Apos tentativa de repair das fontes, se o WinGet ainda falhar por motivo recuperavel (fonte ainda indisponivel), o fluxo deve desviar para o instalador direto oficial sem marcar como falha definitiva.
+* **Decisao**: Classificar o erro em recuperavel vs. definitivo; fallbacks devem ser acionados para erros recuperaveis apos exhausted de estrategias nativas.
+* **Consequencia**: Maquinas com fontes temporariamente indisponiveis nao bloqueiam a instalacao.
+* **Status**: Implementado.
+
+## [ADR-032] - Bypass automatico do WinGet quebrado no Windows 11
+* **Contexto**: Em Windows 11, o WinGet pode estar instalado porem com estado irremediavelmente quebrado, onde nem `repair` resolve. Nessas maquinas, insistir no WinGet causara delay desnecessario.
+* **Decisao**: Detectar o estado quebrado do WinGet no Win11 via diagnostico de comando e desviar automaticamente para fallback direto, sem tentar repair ou outros comandos nativos.
+* **Consequencia**: Maquinas Win11 com WinGet inoperante instalam via caminho direto sem intervencao do operador.
+* **Status**: Implementado.
+
+## [ADR-033] - Deteccao e aviso de proxy antes de instalacoes
+* **Contexto**: Redes corporativas com proxy podem bloquear instalacoes automatizadas sem feedback claro ao operador.
+* **Decisao**: Detectar configuracao de proxy do sistema antes de iniciar instalacoes via WinGet e exibir aviso explicito ao operador.
+* **Consequencia**: O operador e alertado sobre possiveis bloqueios de rede antes do inicio do processo, evitando falhas confusas.
+* **Status**: Implementado.
+
+## [ADR-034] - Deteccao de pacotes ja instalados antes de tentar instalar
+* **Contexto**: Reinstalacoes desnecessarias causam ruido no log, delay e potenciais problemas em ambientes ja configurados.
+* **Decisao**: Antes de tentar qualquer instalacao (winget ou fallback), verificar se o pacote ja esta instalado e registrar como `already_installed`, pulando a operacao.
+* **Consequencia**: O log reflete o estado real da maquina e o operador ve apenas operacoes realmente necessarias.
+* **Status**: Implementado.
+
+## [ADR-035] - Validacao de pre-requisitos por perfil do catalogo
+* **Contexto**: Diferentes perfis de laboratorio podem ter pre-requisitos diferentes, e tentar instalar sem satisface-los pode causar falhas em cadeia.
+* **Decisao**: O catalogo aceita um bloco `prerequisites` por perfil; o carregador valida antes de executar qualquer plano de instalacao.
+* **Consequencia**: Falhas por dependencia faltante sao identificadas cedo, com mensagem clara ao operador.
+* **Status**: Implementado.
+
+## [ADR-036] - Retry de downloads via PowerShell em erros SSL/TLS
+* **Contexto**: Downloads diretos podem falhar por configuracao SSL restritiva ou certificados invalidos, mesmo com URLsHTTPS validas.
+* **Decisao**: Quando o download direto falhar por erro SSL/TLS, tentar novamente via `System.Net.WebClient` do PowerShell com configuracao mais permissiva.
+* **Consequencia**: Downloads em ambientes corporativos com SSL restritivo tem taxa de sucesso significativamente maior.
+* **Status**: Implementado.
+
+## [ADR-037] - Log confiavel de versoes do Windows e WinGet
+* **Contexto**: Diagnosticos remotos dependem de informacao precisa de versao, mas`winget --version` pode falhar ou retornar formato inconfiavel.
+* **Decisao**: Registrar versoes via multiplas fontes (registro do Windows, `winget --version`, `sysinfo`) e usar o valor mais confiavel disponivel.
+* **Consequencia**: Logs de falha contem informacao de versao confiavel para reproduzir o ambiente.
+* **Status**: Implementado.
+
+## [ADR-038] - Menu interativo do .exe consolidando operacao, perfil e pacotes
+* **Contexto**: O operador precisa de uma interface clara para escolher o que fazer, contra quem, e em qual escopo.
+* **Decisao**: Menu interativo no console do .exe com tres fases: escolha da operacao (instalar/atualizar/desinstalar), escolha do perfil, e escolha dos pacotes.
+* **Consequencia**: A experiencia do operador se aproxima de um instalador tradicional com controles faceis de entender.
+* **Status**: Implementado na v0.2.0.

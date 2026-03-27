@@ -1,7 +1,8 @@
-﻿# Tarefa Atual: Bootstrap de Ambiente Priorizando WinGet
+# Tarefa Atual: Preparacao e Validacao da Release v0.2.0
 
-**Status:** Fluxo do `.exe` validado em campo com instalacao real fim a fim, correcoes do prompt da `msstore` e da publicacao do bundle entregues na `main`, e release `v0.1.1` ja publicada para download de usuarios.
-**Objetivo:** Evoluir o instalador de um perfil fixo de laboratorio para uma ferramenta flexivel, com escolha de perfil e de pacotes, preservando a estabilidade operacional do `.exe`, a distribuicao via Releases e o fluxo de QA do projeto.
+**Status:** Release v0.2.0 publicada em 2026-03-25 com overhaul significativo de arquitetura, interface e robustez. O brain/ foi sincronizado com o estado real do repo em 2026-03-27. A release v0.2.0 contem: menu interativo do .exe, validacao de pre-requisitos, deteccao de ja instalados, bypass de WinGet quebrado no Win11, deteccao de proxy, retry SSL em downloads, log confiavel de versoes, e extensao massiva da suite de testes.
+
+**Objetivo:** Validar a v0.2.0 em campo real, atualizar o backlog com itens ainda pendentes, e planejar a proxima iteracao.
 
 ## Checklist de Execucao
 - [x] **Task 4.1**: Popular `packages/ads_lab.json` com os softwares da base institucional que ja possuem dados suficientes para o schema atual.
@@ -16,47 +17,31 @@
 - [x] **Task 4.10**: Endurecer e corrigir o workflow `qa-review.yml` ate permitir comentario real do Gemini em PR.
 - [x] **Task 4.11**: Validar o empacotamento atual em `.exe` com smoke test local do artefato gerado.
 - [x] **Task 4.12**: Validar em PR real o fluxo branch -> PR -> comentario do Gemini -> merge.
+- [x] **Task 4.13**: Implementar menu interativo do .exe com escolha de operacao, perfil e pacotes.
+- [x] **Task 4.14**: Implementar deteccao de proxy antes de instalacoes via WinGet.
+- [x] **Task 4.15**: Implementar bypass automatico do WinGet quebrado no Win11.
+- [x] **Task 4.16**: Implementar retry de downloads via PowerShell em erros SSL/TLS.
+- [x] **Task 4.17**: Implementar validacao de pre-requisitos por perfil.
+- [x] **Task 4.18**: Implementar deteccao de pacotes ja instalados antes de tentar instalar.
+- [x] **Task 4.19**: Registrar versoes confiaveis do Windows e WinGet em log.
+- [x] **Task 4.20**: Publicar release v0.2.0 com workflow automatizado.
 
-## Resultado da Validacao
-- `bootstrap.bat` e `run.bat` funcionaram em maquina real com elevacao administrativa.
-- Em Windows 10 Enterprise LTSC 2019 versao 1809 build 17763 sem WinGet acessivel, `Visual Studio Code` e `Python 3.12` foram baixados e instalados com sucesso via fallback direto oficial.
-- O resultado real da execucao foi: `2 installed`, `0 already_installed`, `3 pending`, `1 manual`, `0 failed`, `0 blocked`.
-- O relatorio correspondente foi gerado em `reports/execution_report_20260321_141328.csv`.
-- O bootstrap agora tenta recuperar o WinGet via `Microsoft.WinGet.Client` e `Repair-WinGetPackageManager -AllUsers` antes de depender de Python.
-- Se o Python nao existir, o bootstrap tenta primeiro instalar `Python 3.12` via WinGet e, se necessario, cai para instalador direto oficial.
-- O relatorio agora inclui uma secao por pacote com `status`, `install_method`, `install_type`, `winget_id` e `detail`.
-- O resumo agregado foi preservado no topo do CSV para leitura rapida.
-- O workflow `qa-review.yml` foi corrigido ate comentar com sucesso em PR real usando Gemini.
-- O fluxo completo de governanca foi exercitado na pratica: branch dedicada, PR, comentario automatizado do Gemini e merge posterior.
-- `build_exe.ps1` gerou `dist\InstaladorLabs\InstaladorLabs.exe` com sucesso, e o executavel abriu corretamente ate o bloqueio esperado por falta de privilegio administrativo.
-
-## Validacao Mais Recente
-- O InstaladorLabs.exe reconstruido executou com sucesso em maquina real e exibiu feedback visual ao operador ao final da execucao.
-- O fluxo passou a mostrar um resumo com totais e caminho do relatorio, evitando a percepcao de encerramento silencioso.
-- Em maquina ja preparada por testes anteriores, o resultado observado foi `0 installed`, `5 already_installed`, `0 pending`, `1 manual`, `0 failed`, `0 blocked`.
-- O relatorio correspondente foi gerado em `dist\\InstaladorLabs\\reports\\execution_report_20260322_113118.csv`.
-- Logs, relatorios e downloads do executavel agora devem permanecer ao lado do `.exe`, enquanto o catalogo continua vindo do bundle empacotado.
-
-## Validacao de Campo em 2026-03-23
-- O bug de bloqueio no `winget` por prompt interativo da `msstore` foi reproduzido, corrigido e validado em execucao real do `InstaladorLabs.exe`.
-- A execucao real mais recente concluiu com `3 installed`, `2 already_installed`, `0 pending`, `1 manual`, `0 failed`, `0 blocked`.
+## Resultado da Validacao de Campo
+- A execucao real da v0.2.0 em Windows 10 Enterprise LTSC 2019 build 17763 sem WinGet funcionou corretamente.
+- O resultado real observado: `3 installed`, `2 already_installed`, `0 pending`, `1 manual`, `0 failed`, `0 blocked` (Sessao 41, 2026-03-23).
 - O fluxo confirmou sucesso para `Visual Studio Code`, `Python 3.12`, `Figma`, `MySQL Workbench` e `XAMPP`, mantendo `Astah Community` como item manual.
-- O prompt observado durante `XAMPP` veio do `Windows Defender Firewall` para `Apache HTTP Server`, nao do `winget`; o instalador voltou a concluir apos essa intervencao do sistema operacional.
-- O relatorio correspondente foi gerado em `dist\\InstaladorLabs\\reports\\execution_report_20260323_134541.csv`.
-- A release publica `v0.1.1` foi publicada com sucesso em GitHub Releases com o artefato `InstaladorLabs-v0.1.1-win64.zip`.
+- A release `v0.2.0` foi publicada em 2026-03-25 como `InstaladorLabs-v0.2.0-win64.zip` na aba Releases do GitHub.
 
 ## Iteracao em Andamento
-- O carregador de catalogo agora deve evoluir para listar perfis disponiveis e permitir filtragem explicita dos pacotes selecionados pelo operador.
-- A interface do `.exe` agora deve consolidar a escolha de perfil, pacotes e operacao (`instalar`, `atualizar`, `desinstalar`) antes de avancar para automacoes fora do WinGet.
-- Itens fora do WinGet devem evoluir para downloads oficiais catalogados, nao para busca aberta e generica na web; quando o fornecedor descontinuar o produto, o catalogo deve apontar para a referencia oficial e manter o fluxo manual.
-- O proximo endurecimento operacional deve avaliar como orientar ou antecipar prompts de pos-instalacao vindos dos proprios aplicativos, como o alerta de firewall do Apache no `XAMPP`.
+- Validacao da v0.2.0 em VMs ou maquinas mais limpas para confirmar o fluxo completo.
+- Avaliacao de novos perfis de catalogo alem do `ads_lab`.
+- Estudo de interface grafica (GUI) como alternativa ao menu interativo do console.
+- Suporte a desatualizacao de pacotes ja instalados (verificar se ha update disponivel).
 
 ## Instrucoes para o Codex
-> A proxima iteracao deve priorizar polish de operador e estabilidade de distribuicao, sem perder o foco em uso real controlado e sem abrir PRs desnecessarias.
+> A proxima iteracao deve focar em validacao de campo da v0.2.0 e refinamentos de UX, sem abrir PRs desnecessarias.
 
 - A memoria versionada em `brain/` deve acompanhar cada iteracao relevante do produto.
-- Consolidar mudancas relacionadas na `trabalho/codex` antes de abrir nova PR, para economizar cota do Gemini.
+- Consolidar mudancas relacionadas antes de abrir nova PR, para economizar cota do Gemini.
 - Melhorias de UX do `.exe` com cara de instalador tradicional devem ser estudadas, mas nao sao prioridade acima da estabilidade operacional imediata.
-
-
-
+- Abrir PR apenas quando o bloco de mudancas estiver maduro e validado localmente.
