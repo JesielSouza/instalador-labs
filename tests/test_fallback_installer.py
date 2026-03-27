@@ -69,7 +69,27 @@ class DirectInstallerManagerTests(unittest.TestCase):
 
                 urlretrieve_mock.side_effect = fake_download
 
-                with self.assertRaises(ValueError):
+                with self.assertRaisesRegex(ValueError, "nao parece ser um instalador Windows valido"):
+                    self.manager.download_installer(self.package, logger)
+        finally:
+            for child in temp_dir.glob("*"):
+                child.unlink(missing_ok=True)
+            temp_dir.rmdir()
+
+    def test_download_installer_rejects_too_small_payload_even_with_valid_magic(self):
+        logger = FakeLogger()
+        temp_dir = Path(".tmp-test-fallback-small-installer")
+        temp_dir.mkdir(exist_ok=True)
+        try:
+            with patch("utils.fallback_installer.DOWNLOADS_DIR", temp_dir), patch(
+                "urllib.request.urlretrieve"
+            ) as urlretrieve_mock:
+                def fake_download(_url, target_path):
+                    Path(target_path).write_bytes(b"MZtiny")
+
+                urlretrieve_mock.side_effect = fake_download
+
+                with self.assertRaisesRegex(ValueError, "arquivo muito pequeno"):
                     self.manager.download_installer(self.package, logger)
         finally:
             for child in temp_dir.glob("*"):
@@ -98,7 +118,7 @@ class DirectInstallerManagerTests(unittest.TestCase):
                 side_effect=ssl.SSLCertVerificationError(1, "certificate verify failed"),
             ), patch.object(DirectInstallerManager, "_download_with_powershell") as powershell_download_mock:
                 def fake_powershell_download(_url, target_path):
-                    Path(target_path).write_bytes(b"MZtest")
+                    Path(target_path).write_bytes(b"MZ" + (b"x" * 2048))
 
                 powershell_download_mock.side_effect = fake_powershell_download
 
@@ -125,7 +145,7 @@ class DirectInstallerManagerTests(unittest.TestCase):
                 side_effect=RuntimeError("PowerShell falhou"),
             ), patch.object(DirectInstallerManager, "_download_with_bits") as bits_download_mock:
                 def fake_bits_download(_url, target_path):
-                    Path(target_path).write_bytes(b"MZtest")
+                    Path(target_path).write_bytes(b"MZ" + (b"x" * 2048))
 
                 bits_download_mock.side_effect = fake_bits_download
 

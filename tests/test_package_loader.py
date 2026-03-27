@@ -62,6 +62,107 @@ class PackageLoaderSelectionTests(unittest.TestCase):
 
         self.assertEqual(profile["packages"][0]["official_download"]["file_name"], "astah-installer.exe")
 
+    def test_validate_profile_rejects_non_https_manual_reference_url(self):
+        with self.assertRaisesRegex(Exception, "manual_reference_url"):
+            validate_package_profile(
+                {
+                    "profile": "manual_reference_http",
+                    "description": "perfil invalido",
+                    "packages": [
+                        {
+                            "software": "Astah Community",
+                            "install_type": "manual",
+                            "manual_reference_url": "http://example.invalid/manual",
+                        }
+                    ],
+                }
+            )
+
+    def test_validate_profile_rejects_manual_item_with_fallback_installer(self):
+        with self.assertRaisesRegex(Exception, "fallback_installer"):
+            validate_package_profile(
+                {
+                    "profile": "manual_with_fallback",
+                    "description": "perfil invalido",
+                    "packages": [
+                        {
+                            "software": "Astah Community",
+                            "install_type": "manual",
+                            "fallback_installer": {
+                                "download_url": "https://example.invalid/astah.exe",
+                                "install_args": ["/S"],
+                            },
+                        }
+                    ],
+                }
+            )
+
+    def test_validate_profile_rejects_invalid_file_name_with_directory(self):
+        with self.assertRaisesRegex(Exception, "file_name"):
+            validate_package_profile(
+                {
+                    "profile": "invalid_filename",
+                    "description": "perfil invalido",
+                    "packages": [
+                        {
+                            "software": "Visual Studio Code",
+                            "install_type": "winget",
+                            "winget_id": "Microsoft.VisualStudioCode",
+                            "fallback_installer": {
+                                "download_url": "https://example.invalid/vscode.exe",
+                                "file_name": "nested/vscode.exe",
+                                "install_args": ["/S"],
+                            },
+                        }
+                    ],
+                }
+            )
+
+    def test_validate_profile_rejects_unsupported_installer_extension(self):
+        with self.assertRaisesRegex(Exception, "extensao nao suportada"):
+            validate_package_profile(
+                {
+                    "profile": "invalid_extension",
+                    "description": "perfil invalido",
+                    "packages": [
+                        {
+                            "software": "Visual Studio Code",
+                            "install_type": "winget",
+                            "winget_id": "Microsoft.VisualStudioCode",
+                            "fallback_installer": {
+                                "download_url": "https://example.invalid/vscode.bat",
+                                "install_args": ["/S"],
+                            },
+                        }
+                    ],
+                }
+            )
+
+    def test_validate_profile_rejects_prerequisite_without_https_host(self):
+        with self.assertRaisesRegex(Exception, "HTTPS"):
+            validate_package_profile(
+                {
+                    "profile": "invalid_prerequisite_url",
+                    "description": "perfil invalido",
+                    "packages": [
+                        {
+                            "software": "MySQL Workbench",
+                            "install_type": "winget",
+                            "winget_id": "Oracle.MySQLWorkbench",
+                            "prerequisites": [
+                                {
+                                    "software": "VC++",
+                                    "fallback_installer": {
+                                        "download_url": "https:///broken",
+                                        "install_args": ["/quiet"],
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
     def test_build_dynamic_package_profile_deduplicates_by_winget_id(self):
         profile = build_dynamic_package_profile(
             [

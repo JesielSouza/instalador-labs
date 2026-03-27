@@ -622,7 +622,7 @@ class ExecutePackagePlanTests(unittest.TestCase):
                     "install_type": "winget",
                     "winget_id": "Vendor.A",
                     "fallback_installer": {
-                        "download_url": "http://example.invalid/a.exe",
+                        "download_url": "https://example.invalid/a.exe",
                         "file_name": "shared-installer.exe",
                         "install_args": ["/quiet"],
                     },

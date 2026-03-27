@@ -207,3 +207,21 @@
 * **Decisao**: Menu interativo no console do .exe com tres fases: escolha da operacao (instalar/atualizar/desinstalar), escolha do perfil, e escolha dos pacotes.
 * **Consequencia**: A experiencia do operador se aproxima de um instalador tradicional com controles faceis de entender.
 * **Status**: Implementado na v0.2.0.
+
+## [ADR-039] - Schema do catalogo deve falhar cedo para URLs e artefatos ambiguos
+* **Contexto**: O catalogo passou a carregar semantica operacional critica demais para continuar aceitando entradas ambiguas ou inseguras, como URLs sem HTTPS, `file_name` com diretorios ou extensoes incoerentes.
+* **Decisao**: Endurecer `utils/package_loader.py` para validar HTTPS com host valido, proibir `file_name` com caminho embutido, restringir extensoes de artefato suportadas e bloquear combinacoes ambiguas como `manual` com `fallback_installer`.
+* **Consequencia**: Erros de catalogo passam a ser detectados antes da execucao, reduzindo falhas confusas em maquina real.
+* **Status**: Implementado na branch `fix/harden-runtime-and-catalog`.
+
+## [ADR-040] - Fallback direto deve validar artefato baixado alem do magic header
+* **Contexto**: Apenas checar `MZ` ou assinatura MSI no cabecalho ainda permite payloads pequenos ou claramente quebrados passarem pela validacao basica.
+* **Decisao**: O `DirectInstallerManager` deve validar tambem tamanho minimo do arquivo e produzir diagnostico explicito da causa de invalidacao do artefato.
+* **Consequencia**: Downloads corrompidos, truncados ou HTML disfarcado sao rejeitados mais cedo, com mensagem mais acionavel para troubleshooting.
+* **Status**: Implementado na branch `fix/harden-runtime-and-catalog`.
+
+## [ADR-041] - Diagnosticos de runtime nao devem morar no main.py
+* **Contexto**: `main.py` vinha acumulando diagnosticos de reboot, host, runtime, conectividade e mensagens ao operador, aumentando acoplamento e tornando o fluxo principal mais dificil de manter.
+* **Decisao**: Extrair o suporte de runtime e operator messaging para `utils/runtime_support.py`, mantendo `main.py` como orquestrador do fluxo principal.
+* **Consequencia**: O codigo fica mais modular, com menor concentracao de responsabilidade em `main.py`, sem trocar o comportamento funcional do produto.
+* **Status**: Implementado na branch `fix/harden-runtime-and-catalog`.

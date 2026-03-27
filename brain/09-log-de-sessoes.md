@@ -225,7 +225,20 @@
 * **Resultado**: Usuarios passam a ter acesso a nova release com todas as evolucoes desde a v0.1.1.
 
 ## [Sessao 43] - Sincronizacao de Memoria com OpenClaw (2026-03-27)
-* **Acoes**: OpenClaw получил acesso ao repo via `gh` CLI autenticado.
-* **Acoes**: Констатация de que o `brain/` local e remoto estavam sincronizados porem desatualizados em relacao ao remote (paravam na sessao 30).
+* **Acoes**: OpenClaw recebeu acesso ao repo via `gh` CLI autenticado.
+* **Acoes**: Constatacao de que o `brain/` local e remoto estavam sincronizados porem desatualizados em relacao ao remote (paravam na sessao 30).
 * **Acoes**: Reconstrucao das sessoes 31 a 43 a partir do git log e lista de PRs merged.
 * **Resultado**: A memoria versionada e atualizada para refletir o estado real do projeto em v0.2.0.
+
+## [Sessao 44] - Endurecimento de Catalogo e Fallback (2026-03-27)
+* **Acoes**: Evolucao de `utils/package_loader.py` para endurecer o schema: URLs HTTPS com host valido, restricao de extensoes de artefato, proibicao de `file_name` com diretorios e bloqueio de combinacoes ambiguas (`manual` com `fallback_installer`, `manual_reference_url` fora de item manual).
+* **Acoes**: Evolucao de `utils/fallback_installer.py` para validar tamanho minimo e cabecalho coerente do artefato baixado, alem de melhorar mensagens de erro com URL e diagnostico da causa de invalidacao.
+* **Acoes**: Registro de diagnostico adicional do comando executado quando o fallback falha apos montar a linha de instalacao.
+* **Validacao**: `tests.test_package_loader` e `tests.test_fallback_installer` passaram com sucesso, totalizando 25 testes verdes no bloco endurecido.
+* **Resultado**: O produto passa a falhar mais cedo e com mensagens mais acionaveis quando o catalogo ou o artefato baixado estiverem inconsistentes.
+
+## [Sessao 45] - Reducao de Acoplamento do Main (2026-03-27)
+* **Acoes**: Extracao de diagnosticos de runtime e mensagens ao operador de `main.py` para o novo modulo `utils/runtime_support.py`.
+* **Acoes**: Preservacao do contrato funcional de `main.py` como orquestrador, incluindo adaptacao da funcao de erro visivel ao operador para respeitar o estado `_OPERATOR_WINDOW_ACTIVE`.
+* **Validacao**: `tests.test_main`, `tests.test_package_loader` e `tests.test_fallback_installer` executados com sucesso, totalizando **53 testes OK**.
+* **Resultado**: `main.py` fica menos concentrado em responsabilidades operacionais, melhorando manutenibilidade sem mudar o comportamento do fluxo principal.
