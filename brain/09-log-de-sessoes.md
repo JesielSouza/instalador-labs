@@ -249,3 +249,10 @@
 * **Acoes**: Correcao do modulo extraido para manter exatamente a taxonomia diagnostica e os textos esperados pelo projeto, apos a primeira tentativa ter simplificado demais a semantica.
 * **Validacao**: `tests.test_main` executado com sucesso (28 testes OK) e revalidacao complementar de `tests.test_package_loader` + `tests.test_fallback_installer` (25 testes OK), mantendo o total de **53 testes verdes**.
 * **Resultado**: `main.py` perde mais um bloco coeso de responsabilidade sem mudar o comportamento observavel do produto.
+
+## [Sessao 47] - Extracao de Bootstrap e Carregamento de Catalogo (2026-03-27)
+* **Acoes**: Extracao do bloco de bootstrap/preflight e do carregamento/diagnostico de catalogo de `main.py` para o novo modulo `utils/bootstrap_support.py`.
+* **Acoes**: Preservacao do contrato funcional via wrappers em `main.py` e injecao explicita de dependencias para manter a mockabilidade dos testes que faziam patch em `main.*`.
+* **Acoes**: Correcao da primeira extracao do carregamento de catalogo, que havia quebrado um teste por binding prematuro das funcoes do `package_loader`; a versao final usa injecao e voltou a refletir a expectativa do projeto.
+* **Validacao**: `tests.test_main` executado com sucesso (28 testes OK) e revalidacao complementar de `tests.test_package_loader` + `tests.test_fallback_installer` (25 testes OK), mantendo o total de **53 testes verdes**.
+* **Resultado**: `main.py` perde mais um bloco operacional grande sem perder testabilidade nem comportamento observavel.

@@ -231,3 +231,9 @@
 * **Decisao**: Extrair esse bloco para `utils/reporting.py`, mantendo wrappers finos em `main.py` para preservar contrato funcional e evitar regressao no restante do fluxo.
 * **Consequencia**: O codigo de relatorio fica mais modular e reutilizavel, enquanto `main.py` continua encolhendo sem quebrar a API interna usada pelos testes e pelo runtime.
 * **Status**: Implementado na branch `refactor/extract-preflight-and-reporting`.
+
+## [ADR-043] - Bootstrap e carregamento de catalogo devem ser extraidos com injecao de dependencias
+* **Contexto**: `main.py` ainda concentrava validacao de ambiente, diagnosticos de bootstrap e carregamento/sondagem do catalogo. Ao extrair esse bloco, os testes existentes dependiam de mocks em `main.py`, o que seria quebrado por imports diretos no modulo novo.
+* **Decisao**: Extrair o bloco para `utils/bootstrap_support.py`, mas com injecao explicita das dependencias usadas no carregamento de catalogo e nas validacoes do bootstrap, preservando a mockabilidade e o contrato funcional do wrapper em `main.py`.
+* **Consequencia**: O `main.py` encolhe mais um bloco grande sem sacrificar testabilidade; a extracao fica modular e os testes continuam representando o comportamento real esperado pelo projeto.
+* **Status**: Implementado na branch `refactor/extract-bootstrap-from-main`.
